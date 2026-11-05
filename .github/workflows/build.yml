@@ -1,0 +1,36 @@
+name: build
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Sort files into the right folders
+        run: |
+          J=src/main/java/dev/pvpmod
+          mkdir -p $J/gui $J/mixin $J/config $J/render src/main/resources
+          mv *Screen.java FloatSlider.java IntSlider.java ColorUtil.java $J/gui/ || true
+          mv *Mixin.java $J/mixin/ || true
+          mv PvpConfig.java $J/config/ || true
+          mv TintingVertexConsumer.java $J/render/ || true
+          mv PvpModClient.java PvpTint.java $J/ || true
+          mv fabric.mod.json pvpmod.mixins.json pvpmod.tint.mixins.json src/main/resources/ || true
+          find src -type f | sort
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 9.2.0
+      - run: gradle build --no-daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pvpmod-jar
+          path: build/libs/*.jar
