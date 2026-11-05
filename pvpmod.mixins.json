@@ -1,0 +1,13 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "dev.pvpmod.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "client": [
+    "HeldItemRendererMixin",
+    "EndCrystalEntityModelMixin",
+    "ParticleManagerMixin",
+    "GameRendererMixin"
+  ],
+  "injectors": { "defaultRequire": 1 }
+}
