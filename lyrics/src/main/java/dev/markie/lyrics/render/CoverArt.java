@@ -21,6 +21,8 @@ public final class CoverArt {
     private static final HttpClient HTTP = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(8))
         .followRedirects(HttpClient.Redirect.NORMAL).build();
     private static final Identifier ID = Identifier.of("markielyrics", "dynamic/cover");
+    private static final Identifier ROUND_ID = Identifier.of("markielyrics", "dynamic/cover_round");
+    private static NativeImageBackedTexture roundTexture;
 
     private static volatile String wantedUrl;
     private static volatile boolean ready = false;
@@ -37,6 +39,9 @@ public final class CoverArt {
 
     /** Texture id to draw, or null if no cover is loaded. */
     public static Identifier texture() { return ready ? ID : null; }
+
+    /** The cover cut into a vinyl-style disc (round, with a small hole), for the spinning HUD record. */
+    public static Identifier roundTexture() { return ready ? ROUND_ID : null; }
 
     public static void request(String url) {
         wantedUrl = url;
@@ -61,6 +66,22 @@ public final class CoverArt {
                     if (!url.equals(wantedUrl)) return;
                     NativeImage img = new NativeImage(SIZE, SIZE, false);
                     for (int y = 0; y < SIZE; y++) for (int x = 0; x < SIZE; x++) img.setColorArgb(x, y, argb[y * SIZE + x]);
+                    NativeImage round = new NativeImage(SIZE, SIZE, false);
+                    for (int y = 0; y < SIZE; y++) for (int x = 0; x < SIZE; x++) {
+                        float dx = x + 0.5f - SIZE / 2f, dy = y + 0.5f - SIZE / 2f;
+                        float d = (float) Math.sqrt(dx * dx + dy * dy) / (SIZE / 2f);
+                        float al = Math.max(0, Math.min(1, (1f - d) * SIZE / 2f)) * Math.max(0, Math.min(1, (d - 0.12f) * SIZE / 2f));
+                        int c = argb[y * SIZE + x];
+                        if (d > 0.12f && d < 0.2f) c = 0xFF1A1620;   // label ring around the hole
+                        round.setColorArgb(x, y, (Math.round(al * 255) << 24) | (c & 0xFFFFFF));
+                    }
+                    if (roundTexture == null) {
+                        roundTexture = new NativeImageBackedTexture(() -> "markielyrics cover round", round);
+                        mc.getTextureManager().registerTexture(ROUND_ID, roundTexture);
+                    } else {
+                        roundTexture.setImage(round);
+                        roundTexture.upload();
+                    }
                     if (texture == null) {
                         texture = new NativeImageBackedTexture(() -> "markielyrics cover", img);
                         mc.getTextureManager().registerTexture(ID, texture);

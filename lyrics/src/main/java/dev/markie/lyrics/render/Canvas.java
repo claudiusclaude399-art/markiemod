@@ -21,6 +21,8 @@ public interface Canvas {
     void translate(float x, float y);
     void rotate(float radians);
     void scale(float s);
+    /** Move towards (+) or away from (-) the viewer; only matters in the world, where text is depth-sorted. */
+    default void depth(float dz) {}
     void text(Text t, float x, float y, int argb, boolean shadow);
     /** A tinted soft sprite centred on (cx, cy). */
     void sprite(Identifier tex, float cx, float cy, float halfW, float halfH, int argb);
@@ -42,6 +44,7 @@ public interface Canvas {
         public void translate(float x, float y) { ms.translate(x, y, 0); }
         public void rotate(float r) { if (r != 0) ms.multiply(RotationAxis.POSITIVE_Z.rotation(r)); }
         public void scale(float s) { ms.scale(s, s, s); }
+        public void depth(float dz) { ms.translate(0, 0, dz); }
 
         public void text(Text t, float x, float y, int argb, boolean shadow) {
             if ((argb >>> 24) < 6) return;

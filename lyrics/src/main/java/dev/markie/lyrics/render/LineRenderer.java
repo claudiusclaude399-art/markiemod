@@ -109,6 +109,7 @@ public final class LineRenderer {
             float ty = -4.5f;
             int rgb = Colors.word(i, n, xFrac);
             if (hl > 0) rgb = LyricsAnimator.lerpRgb(rgb, 0xFFFFFF, 0.35f * hl);
+            if (POSE.bright > 0) rgb = LyricsAnimator.lerpRgb(rgb, 0xFFFFFF, POSE.bright);
 
             // echo: bigger fading copy flashing out of the word
             if (cfg.echo && since >= 0 && since < 450 && exit <= 0) {
@@ -120,12 +121,13 @@ public final class LineRenderer {
             }
 
             cv.scale(sc);
-            if (cfg.perLetter && exit <= 0 && since < LyricsAnimator.WORD_IN_MS + s.letters[i].length * LyricsAnimator.LETTER_STAGGER_MS + 50) {
+            long inMs = LyricsAnimator.wordInMs();
+            if (cfg.perLetter && exit <= 0 && since < inMs + s.letters[i].length * LyricsAnimator.LETTER_STAGGER_MS + 50) {
                 // letters pop in one after another with the chosen style
                 Text[] ls = s.letters[i];
                 for (int k = 0; k < ls.length; k++) {
                     long lsince = since - k * LyricsAnimator.LETTER_STAGGER_MS;
-                    float lp = LyricsAnimator.clamp01(lsince / (float) LyricsAnimator.WORD_IN_MS);
+                    float lp = LyricsAnimator.clamp01(lsince / (float) inMs);
                     if (lp <= 0) continue;
                     WordFx.pose(cfg, lp, lsince, i * 7 + k, LETTER);
                     float la = LETTER.alpha * lineAlpha;
@@ -144,14 +146,38 @@ public final class LineRenderer {
         }
     }
 
-    private static void drawGlyph(Canvas cv, LyricsConfig cfg, Text t, float x, float y, float alpha, int rgb, int glow) {
+    static void drawGlyph(Canvas cv, LyricsConfig cfg, Text t, float x, float y, float alpha, int rgb, int glow) {
         if (alpha < 0.02f) return;
+        if (cfg.depth) {
+            // extruded 3D edge: stacked copies stepping down-right, darkest at the back
+            int layers = cv instanceof Canvas.World ? 6 : Math.max(2, Math.round(5 * cfg.depthAmount));
+            float step = 0.3f;
+            int deep = Colors.depth(rgb);
+            float da = alpha * alpha;   // edge fades in a bit later than the face, so the word "solidifies"
+            for (int k = layers; k >= 1; k--) {
+                int col = LyricsAnimator.lerpRgb(deep, LyricsAnimator.lerpRgb(deep, rgb, 0.35f), 1f - k / (float) layers);
+                // each layer sits a little behind the letters, so the world's depth sorting keeps the face on top
+                cv.push();
+                if (cv instanceof Canvas.World) {
+                    // in the world: a real extrusion going backwards, so the letters are always the closest
+                    // thing to the camera (text there is depth-sorted) and angled lines show solid 3D sides
+                    cv.depth(-0.32f * k * cfg.depthAmount);
+                    cv.text(t, x + k * 0.04f, y + k * 0.13f, LyricsAnimator.argb(da * 0.95f, col), false);
+                } else {
+                    cv.text(t, x + k * step * 0.55f, y + k * step, LyricsAnimator.argb(da * 0.95f, col), false);
+                }
+                cv.pop();
+            }
+        }
         if (cfg.glow) {
             int gc = LyricsAnimator.argb(alpha * 0.28f, glow);
+            cv.push();
+            cv.depth(-0.04f);
             for (int k = 0; k < 8; k++) {
                 float a = k * (float) Math.PI / 4f;
                 cv.text(t, x + (float) Math.cos(a) * 0.9f, y + (float) Math.sin(a) * 0.9f, gc, false);
             }
+            cv.pop();
         }
         cv.text(t, x, y, LyricsAnimator.argb(alpha, rgb), cfg.shadow);
     }

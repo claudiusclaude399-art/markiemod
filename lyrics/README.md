@@ -7,6 +7,11 @@ Client-side only, so it works on any server.
 ![preview](docs/preview.jpg)
 
 ## Features
+- **Cinematic look (default), like the music-video style:** heavy white lettering with a solid 3D extruded edge,
+  colours that match the sky, words that fade in softly and settle, lines angled so they run from far to near,
+  lines that slowly fly towards you, two-line pairs that stack and leave together, and a "now playing" title
+  card in the sky when a song starts. Presets: **Cinematic**, **Sparkle** (all the effects), **Minimal**
+- A smoothed song clock, so words never jitter when Spotify's position updates
 - **3 places to show lyrics:** *Sky* (huge, written into the sky), *Floating* (in front of you, good for PvP),
   *Screen* (subtitle style)
 - **Word by word** or whole-line reveal, with pop/fade/rise animations
@@ -38,7 +43,7 @@ Client-side only, so it works on any server.
 - **Preview mode** with a built-in demo song, so you can try every look without Spotify
 
 ## Using it
-1. Put `markielyrics-1.4.0.jar` and Fabric API in your `mods` folder.
+1. Put `markielyrics-1.5.0.jar` and Fabric API in your `mods` folder.
 2. In game press **Right Shift** (or type `/lyrics`) to open the menu.
 3. Go to the **Spotify** tab and follow the 4 steps (one time only):
    - Open <https://developer.spotify.com/dashboard>, click **Create app**, tick **Web API**

@@ -9,7 +9,7 @@ import net.minecraft.text.Text;
  */
 public final class WordFx {
     /** Per-word transform, in text units (one unit = one font pixel). */
-    public static final class Pose { public float dx, dy, scale, rot, alpha; }
+    public static final class Pose { public float dx, dy, scale, rot, alpha, bright; }
 
     /** One particle of a burst. */
     public static final class Spark { public float x, y, scale, rot, alpha; public int rgb; }
@@ -30,8 +30,16 @@ public final class WordFx {
     /** p = 0..1 entrance progress, sinceMs = time since the word started, i = word index. */
     public static void pose(LyricsConfig c, float p, long sinceMs, int i, Pose out) {
         float e = LyricsAnimator.easeOutCubic(p);
-        out.dx = 0; out.dy = 0; out.scale = 1; out.rot = 0; out.alpha = e;
+        out.dx = 0; out.dy = 0; out.scale = 1; out.rot = 0; out.alpha = e; out.bright = 0;
         switch (c.popStyle) {
+            case SMOOTH -> {
+                // like the video: the word fades in slightly big and pale, then settles into place
+                float q = 1f - (1f - p) * (1f - p) * (1f - p) * (1f - p);   // ease-out quart
+                out.alpha = (float) Math.min(1.0, p * 1.6);
+                out.scale = 1f + (1f - q) * 0.2f;
+                out.dy = -(1f - q) * 1.6f;
+                out.bright = (1f - q) * 0.7f;
+            }
             case POP -> {
                 out.scale = 0.55f + 0.45f * LyricsAnimator.easeOutBack(p);
                 out.dy = (1f - e) * 7f;

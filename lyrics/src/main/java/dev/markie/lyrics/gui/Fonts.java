@@ -8,6 +8,7 @@ public final class Fonts {
     public record FontChoice(String name, StyleSpriteSource source) {}
 
     public static final FontChoice[] ALL = {
+        mod("Poppins Bold", "poppins_bold"),
         mod("Poppins", "poppins"),
         mod("Montserrat", "montserrat"),
         mod("Fredoka", "fredoka"),

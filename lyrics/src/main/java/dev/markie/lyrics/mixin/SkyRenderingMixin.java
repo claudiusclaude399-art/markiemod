@@ -15,6 +15,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 public class SkyRenderingMixin {
     @Inject(method = "renderTopSky", at = @At("HEAD"), cancellable = true, require = 0)
     private void markielyrics$topSky(int color, CallbackInfo ci) {
+        dev.markie.lyrics.render.Colors.vanillaSky = color & 0xFFFFFF;
         if (Skybox.active()) {
             Skybox.render();
             ci.cancel();

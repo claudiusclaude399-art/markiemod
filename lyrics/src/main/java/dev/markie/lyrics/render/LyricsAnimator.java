@@ -17,6 +17,13 @@ import java.util.Random;
 /** Keeps track of which line is on screen, the one fading away, and how each word animates in. */
 public final class LyricsAnimator {
     public static final long WORD_IN_MS = 280;
+    public static final long PAIR_MOVE_MS = 450;
+    public static final float LINE_GAP = 13.5f;   // distance between the two lines of a pair, in font pixels
+
+    /** Entrance length: the smooth style takes a little longer so it feels soft. */
+    public static long wordInMs() {
+        return LyricsConfig.get().popStyle == LyricsConfig.PopStyle.SMOOTH ? 460 : WORD_IN_MS;
+    }
     public static final long LINE_OUT_MS = 650;   // each word's exit
     public static final long EXIT_STAGGER_MS = 45;  // delay between words leaving
     public static final long LETTER_STAGGER_MS = 35;
@@ -24,13 +31,20 @@ public final class LyricsAnimator {
     public static final class Shown {
         public final LyricLine line;
         public final long appearReal;
+        /** First line of the pair this line belongs to (itself if it starts a pair), and its slot (0 top, 1 bottom). */
+        public Shown leader = this;
+        public int slot = 0;
+        /** When the second line of this line's pair arrived (-1 = none yet). */
+        public long partnerAt = -1;
         public long leaveReal = -1;
         public net.minecraft.util.math.Vec3d origin;
         // placement, picked randomly when the line appears so every line lands somewhere new
-        public final float baseYaw, basePitch;
+        public float baseYaw, basePitch;
         /** Random 0..1 picks; turned into angles at draw time so Position settings apply instantly. */
-        public final float rYaw, rPitch;
-        public final float roll, twist;
+        public float rYaw, rPitch;
+        public float roll, twist;
+        /** Direction the line slowly drifts while it's showing (cinematic motion). */
+        public float driftYaw, driftRoll;
         // cached layout
         public final Text[] wordText;
         public final float[] wordWidth;
@@ -48,14 +62,17 @@ public final class LyricsAnimator {
             if (where == LyricsConfig.Where.SKY) {
                 rYaw = r.nextFloat();
                 rPitch = r.nextFloat();
-                roll = (r.nextFloat() - 0.5f) * 20f;
-                twist = (r.nextFloat() - 0.5f) * 44f;
+                roll = (r.nextFloat() - 0.5f) * 18f;
+                // strongly angled, so a line runs from far to near like in a music video
+                twist = (r.nextFloat() < 0.5f ? -1 : 1) * (18f + r.nextFloat() * 30f);
             } else {
                 rYaw = r.nextFloat();
                 rPitch = r.nextFloat();
                 roll = (r.nextFloat() - 0.5f) * 8f;
-                twist = (r.nextFloat() - 0.5f) * 20f;
+                twist = (r.nextFloat() - 0.5f) * 30f;
             }
+            driftYaw = (r.nextFloat() - 0.5f) * 14f;
+            driftRoll = (r.nextFloat() - 0.5f) * 6f;
             TextRenderer tr = MinecraftClient.getInstance().textRenderer;
             Style style = Style.EMPTY.withFont(Fonts.current());
             List<LyricLine.Word> words = line.words();
@@ -93,7 +110,7 @@ public final class LyricsAnimator {
             long t0 = cfg.reveal == LyricsConfig.Reveal.WORD
                 ? line.words().get(i).startMs()
                 : line.startMs() + i * 45L;
-            float p = (songPos - t0) / (float) WORD_IN_MS;
+            float p = (songPos - t0) / (float) wordInMs();
             return clamp01(p);
         }
 
@@ -103,6 +120,31 @@ public final class LyricsAnimator {
                 ? line.words().get(i).startMs()
                 : line.startMs() + i * 45L;
             return songPos - t0;
+        }
+
+        /** Vertical offset of this line inside its pair (font pixels), animated when the partner arrives. */
+        public float slotOffset() {
+            if (slot == 1) return LINE_GAP / 2f;
+            if (partnerAt < 0) return 0f;
+            float k = clamp01((System.currentTimeMillis() - partnerAt) / (float) PAIR_MOVE_MS);
+            return -LINE_GAP / 2f * easeOutCubic(k);
+        }
+
+        /** Seconds since the pair started (drives the slow cinematic drift). */
+        public float groupAge() {
+            return (System.currentTimeMillis() - leader.appearReal) / 1000f;
+        }
+
+        /** Copy placement from the first line so both lines of a pair sit together. */
+        void joinPair(Shown first) {
+            leader = first;
+            slot = 1;
+            baseYaw = first.baseYaw; basePitch = first.basePitch;
+            rYaw = first.rYaw; rPitch = first.rPitch;
+            roll = first.roll; twist = first.twist;
+            driftYaw = first.driftYaw; driftRoll = first.driftRoll;
+            origin = first.origin;
+            first.partnerAt = System.currentTimeMillis();
         }
 
         /** 0..1 fade-in of the whole line (leaving is handled per word, see {@link #wordExit}). */
@@ -147,7 +189,8 @@ public final class LyricsAnimator {
         }
     }
 
-    private static Shown active, leaving;
+    private static Shown active, partnerTop;
+    private static final java.util.ArrayList<Shown> leavingLines = new java.util.ArrayList<>();
     private static int activeIndex = -1;
     private static List<LyricLine> activeList;
     private static int fontAtBuild = -1;
@@ -156,13 +199,28 @@ public final class LyricsAnimator {
     private LyricsAnimator() {}
 
     public static Shown active() { return active; }
-    public static Shown leaving() { return leaving != null && leaving.exitDone() ? null : leaving; }
+
+    /** Every line to draw this frame: lines on their way out, then the current pair. */
+    public static List<Shown> drawList() {
+        leavingLines.removeIf(Shown::exitDone);
+        java.util.ArrayList<Shown> out = new java.util.ArrayList<>(leavingLines);
+        if (partnerTop != null) out.add(partnerTop);
+        if (active != null) out.add(active);
+        return out;
+    }
+
+    private static void leave(Shown s) {
+        if (s == null) return;
+        s.leaveReal = System.currentTimeMillis();
+        leavingLines.add(s);
+    }
 
     /** Call once per frame before drawing. */
     public static void update(float camYaw, float camPitch) {
         LyricsConfig cfg = LyricsConfig.get();
         if (!cfg.showLyrics || SpotifyClient.current() == null || LyricsManager.state() != LyricsManager.State.SYNCED) {
-            if (active != null) { active.leaveReal = System.currentTimeMillis(); leaving = active; active = null; }
+            leave(partnerTop); partnerTop = null;
+            leave(active); active = null;
             activeIndex = -1;
             return;
         }
@@ -172,20 +230,31 @@ public final class LyricsAnimator {
         boolean rebuild = cfg.font != fontAtBuild;
         if (idx != activeIndex || lines != activeList || rebuild) {
             boolean newLine = idx != activeIndex || lines != activeList;
-            if (active != null && newLine) {
-                active.leaveReal = System.currentTimeMillis();
-                leaving = active;
+            Shown prev = active;
+            // pairs: the next line joins the current one (underneath) if it follows straight on
+            boolean pair = newLine && cfg.linePairs && prev != null && partnerTop == null && idx == activeIndex + 1
+                && lines == activeList && idx >= 0 && lines.get(idx).startMs() - prev.line.endMs() < 1500;
+            if (rebuild && !newLine) {
+                // font changed: rebuild in place, keeping the pair
+                if (idx >= 0) {
+                    Shown s = new Shown(lines.get(idx), camYaw, camPitch, cfg.where, seedCounter++ * 0x9E3779B97F4A7C15L);
+                    if (partnerTop != null) s.joinPair(partnerTop);
+                    active = s;
+                }
+            } else if (pair) {
+                partnerTop = prev;
+                Shown s = new Shown(lines.get(idx), camYaw, camPitch, cfg.where, seedCounter++ * 0x9E3779B97F4A7C15L);
+                s.joinPair(prev);
+                active = s;
+            } else {
+                leave(partnerTop); partnerTop = null;
+                leave(active); active = null;
+                if (idx >= 0) active = new Shown(lines.get(idx), camYaw, camPitch, cfg.where, seedCounter++ * 0x9E3779B97F4A7C15L);
             }
+            if (newLine && idx >= 0 && cfg.lineChime) Sounds.play(Sounds.LINE, 1f);
             activeIndex = idx;
             activeList = lines;
             fontAtBuild = cfg.font;
-            if (idx >= 0) {
-                Shown s = new Shown(lines.get(idx), camYaw, camPitch, cfg.where, seedCounter++ * 0x9E3779B97F4A7C15L);
-                active = s;
-                if (newLine && cfg.lineChime) Sounds.play(Sounds.LINE, 1f);
-            } else {
-                active = null;
-            }
         }
     }
 

@@ -20,6 +20,7 @@ import org.joml.Matrix3x2fStack;
 /** The little "now playing" pill at the top of the screen, and the subtitle-style lyrics mode. */
 public final class HudRenderer {
     private static float pillAnim = 0f;
+    private static float spin = 0f, dtFrame = 0f;
     private static long lastFrame = System.nanoTime();
     private static String lastTrack;
     private static long trackChangedAt;
@@ -34,6 +35,7 @@ public final class HudRenderer {
         long nowNs = System.nanoTime();
         float dt = Math.min(0.1f, (nowNs - lastFrame) / 1e9f);
         lastFrame = nowNs;
+        dtFrame = dt;
 
         LyricsConfig cfg = LyricsConfig.get();
         NowPlaying np = SpotifyClient.current();
@@ -64,10 +66,17 @@ public final class HudRenderer {
         Glass.card(ctx, x, y, w, h, 9, 0.6f, a);
 
         // cover, spinning-record style ring while there's no cover yet
-        Identifier cover = CoverArt.texture();
+        Identifier cover = CoverArt.roundTexture();
         int cx = x + 3, cy = y + 3;
         if (cover != null && a > 0.6f) {
-            ctx.drawTexture(RenderPipelines.GUI_TEXTURED, cover, cx, cy, 0, 0, 12, 12, 12, 12, 12, 12);
+            // the cover spins like a record while the song plays
+            if (np.playing()) spin += dtFrame * 0.9f;
+            Matrix3x2fStack mm = ctx.getMatrices();
+            mm.pushMatrix();
+            mm.translate(cx + 6f, cy + 6f);
+            mm.rotate(spin);
+            ctx.drawTexture(RenderPipelines.GUI_TEXTURED, cover, -6, -6, 0, 0, 12, 12, 12, 12, 12, 12);
+            mm.popMatrix();
         } else {
             // little spinning record
             Glass.solid(ctx, cx, cy, 12, 12, 6, Ui.alpha(0xFF2A2230, a));
@@ -123,10 +132,8 @@ public final class HudRenderer {
 
     private static void drawSubtitles(DrawContext ctx, MinecraftClient mc, LyricsConfig cfg) {
         long pos = LyricsManager.position();
-        LyricsAnimator.Shown leaving = LyricsAnimator.leaving();
-        if (leaving != null) drawSubLine(ctx, mc, leaving, pos, cfg);
-        LyricsAnimator.Shown active = LyricsAnimator.active();
-        if (active != null) drawSubLine(ctx, mc, active, pos, cfg);
+        for (LyricsAnimator.Shown s : LyricsAnimator.drawList()) drawSubLine(ctx, mc, s, pos, cfg);
+        TitleCard.renderScreen(ctx);
     }
 
     private static void drawSubLine(DrawContext ctx, MinecraftClient mc, LyricsAnimator.Shown s, long pos, LyricsConfig cfg) {
@@ -134,6 +141,7 @@ public final class HudRenderer {
         int sw = ctx.getScaledWindowWidth(), sh = ctx.getScaledWindowHeight();
         float maxW = sw * 0.9f;
         if (s.totalWidth * base > maxW) base = maxW / s.totalWidth;
-        Lyrics2D.draw(ctx, s, pos, sw / 2f, sh * cfg.screenY, base, 1f);
+        base = Math.min(base, 2.0f * cfg.size);
+        Lyrics2D.draw(ctx, s, pos, sw / 2f, sh * cfg.screenY + s.slotOffset() * base, base, 1f);
     }
 }

@@ -14,6 +14,7 @@ public final class Colors {
             case CUSTOM -> c.customA;
             case RAINBOW -> hsv(hueNow(0), 0.55f, 1f);
             case ALBUM -> CoverArt.hasPalette() ? CoverArt.paletteA() : Themes.current().a();
+            case SKY -> LyricsAnimator.lerpRgb(0xFFFFFF, skyRgb(), 0.16f);
         };
     }
 
@@ -24,6 +25,7 @@ public final class Colors {
             case CUSTOM -> c.customB;
             case RAINBOW -> hsv(hueNow(0.5f), 0.55f, 1f);
             case ALBUM -> CoverArt.hasPalette() ? CoverArt.paletteB() : Themes.current().b();
+            case SKY -> LyricsAnimator.lerpRgb(0xFFFFFF, skyRgb(), 0.28f);
         };
     }
 
@@ -34,7 +36,26 @@ public final class Colors {
             case CUSTOM -> c.customGlow;
             case RAINBOW -> hsv(hueNow(0.25f), 0.8f, 0.85f);
             case ALBUM -> CoverArt.hasPalette() ? scale(CoverArt.paletteA(), 0.6f) : Themes.current().glow();
+            case SKY -> saturate(scale(skyRgb(), 0.62f), 1.25f);
         };
+    }
+
+    /** Colour of the 3D edge under the letters: a darker, richer version of the glow/sky colour. */
+    public static int depth(int faceRgb) {
+        return LyricsAnimator.lerpRgb(scale(faceRgb, 0.55f), glow(), 0.6f);
+    }
+
+    /** Last seen sky colour: the custom skybox's horizon, or the vanilla sky (updated by the sky mixin). */
+    public static volatile int vanillaSky = 0x86A8E8;
+
+    public static int skyRgb() {
+        if (dev.markie.lyrics.sky.Skybox.active()) return dev.markie.lyrics.sky.Skybox.horizonColor();
+        return vanillaSky;
+    }
+
+    private static int saturate(int rgb, float k) {
+        float[] hsv = toHsv(rgb);
+        return hsv(hsv[0], Math.min(1f, hsv[1] * k), hsv[2]);
     }
 
     /** RGB for word i of n. {@code xFrac} is the word's position across the line (0..1). */

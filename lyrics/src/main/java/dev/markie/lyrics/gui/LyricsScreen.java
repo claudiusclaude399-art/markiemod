@@ -248,7 +248,7 @@ public class LyricsScreen extends Screen {
         }
 
         Ui.text(ctx, Ui.t("Markie Lyrics"), px + 11, py + ph - 23, Ui.alpha(Ui.MUTED, alpha));
-        Ui.text(ctx, Ui.t("v1.4 · Right Shift"), px + 11, py + ph - 14, Ui.alpha(0xFF8E879C, alpha));
+        Ui.text(ctx, Ui.t("v1.5 · Right Shift"), px + 11, py + ph - 14, Ui.alpha(0xFF8E879C, alpha));
     }
 
     private void drawHeader(DrawContext ctx, float alpha) {
@@ -286,6 +286,7 @@ public class LyricsScreen extends Screen {
 
     private int overview(DrawContext ctx, int y, float a, float dt) {
         y = nowPlayingCard(ctx, y, a, dt);
+        y = presets(ctx, y, a, dt);
         y = section(ctx, "Quick settings", y, a);
         LyricsConfig c = LyricsConfig.get();
         y = toggle(ctx, y, a, dt, "Show lyrics", "Spotify lyrics while you play", () -> c.showLyrics, v -> c.showLyrics = v);
@@ -404,8 +405,9 @@ public class LyricsScreen extends Screen {
             case CUSTOM -> "Choose your own start, end and glow colours";
             case RAINBOW -> "Colours flow through the rainbow";
             case ALBUM -> "Colours picked from the song's album cover";
+            case SKY -> "Soft white tinted to match the sky (like the video)";
         };
-        y = segmented(ctx, y, a, dt, "Mode", desc, new String[]{"Theme", "Custom", "Rainbow", "Album"},
+        y = segmented(ctx, y, a, dt, "Mode", desc, new String[]{"Theme", "Custom", "Rainbow", "Album", "Sky"},
             c.colorMode.ordinal(), i -> c.colorMode = LyricsConfig.ColorMode.values()[i]);
         switch (c.colorMode) {
             case THEME -> y = themeGrid(ctx, y, a, dt);
@@ -415,6 +417,16 @@ public class LyricsScreen extends Screen {
                     c.rainbowSpeed / 2f, f -> c.rainbowSpeed = Math.round((float) f * 40f) / 20f);
                 y = slider(ctx, y, a, "Spread", "How much of the rainbow fits in one line", Math.round(c.rainbowSpread * 100) + "%",
                     c.rainbowSpread, f -> c.rainbowSpread = Math.round((float) f * 20f) / 20f);
+            }
+            case SKY -> {
+                int h = 26;
+                Glass.card(ctx, contentX, y, contentW, h, 10, 0.2f, a);
+                Ui.text(ctx, Ui.t("Matching the sky right now:"), contentX + 8, y + 9, Ui.alpha(Ui.TEXT, a));
+                int sx = contentX + contentW - 86;
+                Glass.solid(ctx, sx, y + 6, 22, 14, 7, Ui.alpha(0xFF000000 | Colors.colorA(), a));
+                Glass.solid(ctx, sx + 26, y + 6, 22, 14, 7, Ui.alpha(0xFF000000 | Colors.colorB(), a));
+                Glass.solid(ctx, sx + 52, y + 6, 22, 14, 7, Ui.alpha(0xFF000000 | Colors.glow(), a));
+                y += h + 3;
             }
             case ALBUM -> {
                 boolean has = dev.markie.lyrics.render.CoverArt.hasPalette();
@@ -554,13 +566,38 @@ public class LyricsScreen extends Screen {
         if (editingColor == 0) c.customA = rgb; else if (editingColor == 1) c.customB = rgb; else c.customGlow = rgb;
     }
 
+    /** One-click looks. Cinematic is the clean, video-style default. */
+    private int presets(DrawContext ctx, int y, float a, float dt) {
+        LyricsConfig c = LyricsConfig.get();
+        y = section(ctx, "Style preset", y, a);
+        int sel = c.preset == LyricsConfig.Preset.CUSTOM ? -1 : c.preset.ordinal();
+        return chips(ctx, y, a, dt, "preset", new String[]{"Cinematic", "Sparkle", "Minimal"}, sel, i -> {
+            switch (i) {
+                case 0 -> c.applyCinematic();
+                case 1 -> c.applySparkle();
+                default -> c.applyMinimal();
+            }
+            restartPreview();
+        });
+    }
+
     // ---------------------------------------------------------------- effects
 
     private int effects(DrawContext ctx, int y, float a, float dt) {
         LyricsConfig c = LyricsConfig.get();
         y = livePreview(ctx, y, a);
+        y = presets(ctx, y, a, dt);
+        y = section(ctx, "Motion", y, a);
+        y = toggle(ctx, y, a, dt, "Cinematic motion", "Lines slowly fly towards you while they show", () -> c.cinematicMotion, v -> c.cinematicMotion = v);
+        y = toggle(ctx, y, a, dt, "Line pairs", "The next line forms under the first, then both leave", () -> c.linePairs, v -> c.linePairs = v);
+        y = toggle(ctx, y, a, dt, "Song title card", "Title and artist appear in the sky when a song starts", () -> c.titleCard, v -> c.titleCard = v);
+        y = toggle(ctx, y, a, dt, "3D depth", "A solid extruded edge under the letters", () -> c.depth, v -> c.depth = v);
+        if (c.depth) {
+            y = slider(ctx, y, a, "Depth", "How thick the 3D edge is", Math.round(c.depthAmount * 100) + "%",
+                (c.depthAmount - 0.3f) / 1.7f, f -> c.depthAmount = Math.round((0.3f + (float) f * 1.7f) * 20f) / 20f);
+        }
         y = section(ctx, "Pop-in", y, a);
-        y = chips(ctx, y, a, dt, "pop", new String[]{"Pop", "Bounce", "Zoom", "Spin", "Slide", "Fade"}, c.popStyle.ordinal(),
+        y = chips(ctx, y, a, dt, "pop", new String[]{"Smooth", "Pop", "Bounce", "Zoom", "Spin", "Slide", "Fade"}, c.popStyle.ordinal(),
             i -> { c.popStyle = LyricsConfig.PopStyle.values()[i]; restartPreview(); });
         y = toggle(ctx, y, a, dt, "Letter by letter", "Each letter pops in on its own", () -> c.perLetter, v -> { c.perLetter = v; restartPreview(); });
         y = section(ctx, "Exit", y, a);

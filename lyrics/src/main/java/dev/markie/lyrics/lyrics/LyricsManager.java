@@ -73,11 +73,29 @@ public final class LyricsManager {
         });
     }
 
-    /** Song position with the user's offset applied. */
+    private static long smoothPos = -1, lastNanos;
+    private static String smoothId;
+
+    /**
+     * Song position with the user's offset applied. Spotify's progress arrives once a second and can be a
+     * few hundred ms off, so instead of jumping to each new value we run our own clock and nudge it gently
+     * towards Spotify's. Only big differences (seeking, new song) snap straight away.
+     */
     public static long position() {
         NowPlaying np = SpotifyClient.current();
-        if (np == null) return 0;
-        return np.positionNow() - LyricsConfig.get().offsetMs;
+        if (np == null) { smoothPos = -1; return 0; }
+        long raw = np.positionNow() - LyricsConfig.get().offsetMs;
+        long now = System.nanoTime();
+        if (smoothPos < 0 || !np.id().equals(smoothId) || !np.playing() || Math.abs(raw - smoothPos) > 1200) {
+            smoothPos = raw;
+        } else {
+            long dt = (now - lastNanos) / 1_000_000L;
+            long next = smoothPos + dt + Math.round((raw - smoothPos - dt) * 0.05);
+            smoothPos = Math.max(smoothPos, next);   // never run backwards
+        }
+        smoothId = np.id();
+        lastNanos = now;
+        return smoothPos;
     }
 
     /** Index of the line that should be showing right now, or -1. */
