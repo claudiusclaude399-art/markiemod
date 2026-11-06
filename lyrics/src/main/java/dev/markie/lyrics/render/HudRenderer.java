@@ -136,7 +136,7 @@ public final class HudRenderer {
         int sw = ctx.getScaledWindowWidth(), sh = ctx.getScaledWindowHeight();
         float maxW = sw * 0.9f;
         if (s.totalWidth * base > maxW) base = maxW / s.totalWidth;
-        float cy = sh * 0.70f - leave * 14f;
+        float cy = sh * cfg.screenY - leave * 14f;
 
         Matrix3x2fStack m = ctx.getMatrices();
         int n = s.wordText.length;

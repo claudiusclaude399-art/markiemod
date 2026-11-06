@@ -46,10 +46,17 @@ public final class SkyLyricsRenderer {
         boolean sky = cfg.where == LyricsConfig.Where.SKY;
 
         // where the line lives
-        float yaw = (cfg.followView ? camera.getYaw() : s.baseYaw) + s.yawOff;
-        float pitch = sky ? s.pitchOff : (cfg.followView ? camera.getPitch() : s.basePitch) * 0.6f + s.pitchOff;
-        float maxDist = mc.options.getClampedViewDistance() * 16f * 0.6f;
-        float dist = sky ? Math.min(46f * cfg.distance, Math.max(18f, maxDist)) : 7f * cfg.distance;
+        float yaw = (cfg.followView ? camera.getYaw() : s.baseYaw) + LyricsAnimator.yawOffset(s, sky);
+        float pitchOff = LyricsAnimator.pitchOffset(s, sky);
+        float pitch = sky ? pitchOff : (cfg.followView ? camera.getPitch() : s.basePitch) * 0.6f + pitchOff;
+        pitch = Math.max(-89f, Math.min(89f, pitch));
+        float wanted = sky ? cfg.skyDistance : cfg.floatDistance;
+        float dist = wanted;
+        if (sky && cfg.fitFog) {
+            // past ~60% of the render distance fog would swallow the words
+            float maxDist = mc.options.getClampedViewDistance() * 16f * 0.6f;
+            dist = Math.min(wanted, Math.max(16f, maxDist));
+        }
         float leave = LyricsAnimator.easeOutCubic(s.leaveProgress());
         if (sky) pitch -= leave * 6f;          // drift up while leaving
         else dist += leave * 1.5f;             // drift away while leaving
@@ -66,7 +73,11 @@ public final class SkyLyricsRenderer {
         double horiz = Math.sqrt(rel.x * rel.x + rel.z * rel.z);
         float faceYaw = (float) (Math.atan2(-rel.x, rel.z) / RAD) + s.twist;
         float facePitch = (float) (-Math.atan2(rel.y, horiz) / RAD);
-        float scale = (float) rel.length() * (sky ? 0.0068f : 0.0056f) * cfg.size;
+        // By default words keep the same size on screen at any distance (distance changes depth and parallax);
+        // with "Shrink with distance" they get smaller the farther away they are, like real objects.
+        float ref = sky ? 46f : 7f;
+        float unit = sky ? 0.0068f : 0.0056f;
+        float scale = (cfg.scaleWithDistance ? ref : (float) rel.length()) * unit * cfg.size;
 
         ms.push();
         ms.translate(rel.x, rel.y, rel.z);

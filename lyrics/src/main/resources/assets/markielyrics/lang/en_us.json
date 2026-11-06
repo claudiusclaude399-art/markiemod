@@ -1,5 +1,7 @@
 {
   "key.markielyrics.open": "Open Markie Lyrics",
   "key.markielyrics.toggle": "Toggle lyrics",
-  "key.category.markielyrics.main": "Markie Lyrics"
+  "key.category.markielyrics.main": "Markie Lyrics",
+  "key.markielyrics.closer": "Lyrics closer",
+  "key.markielyrics.farther": "Lyrics farther"
 }

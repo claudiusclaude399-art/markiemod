@@ -10,6 +10,9 @@ Client-side only, so it works on any server.
 - **3 places to show lyrics:** *Sky* (huge, written into the sky), *Floating* (in front of you, good for PvP),
   *Screen* (subtitle style)
 - **Word by word** or whole-line reveal, with pop/fade/rise animations
+- **Position controls** (Lyrics tab): distance in blocks for Sky (16-128) and Floating (2-24), height above the
+  horizon / your view, left-right spread, subtitle height for Screen mode, "stay in front of fog" and
+  "shrink with distance"
 - **Follow view**, curved lines, show-through-blocks, timing offset
 - **10 colour themes** (gradient across each line) and **7 fonts** (Poppins, Montserrat, Fredoka,
   Bebas Neue, Pacifico, Caveat, Minecraft), size, distance, glow, shadow
@@ -21,7 +24,7 @@ Client-side only, so it works on any server.
 - **Preview mode** with a built-in demo song, so you can try every look without Spotify
 
 ## Using it
-1. Put `markielyrics-1.1.0.jar` and Fabric API in your `mods` folder.
+1. Put `markielyrics-1.2.0.jar` and Fabric API in your `mods` folder.
 2. In game press **Right Shift** (or type `/lyrics`) to open the menu.
 3. Go to the **Spotify** tab and follow the 4 steps (one time only):
    - Open <https://developer.spotify.com/dashboard>, click **Create app**, tick **Web API**
@@ -29,7 +32,8 @@ Client-side only, so it works on any server.
    - Copy the app's **Client ID**, paste it in the menu, press **Connect**, log in in your browser
 4. Play a song in Spotify. Lyrics show up in the sky.
 
-Commands: `/lyrics`, `/lyrics connect`, `/lyrics toggle`. There is also an unbound "Toggle lyrics" key in Controls.
+Commands: `/lyrics`, `/lyrics connect`, `/lyrics toggle`, `/lyrics distance <blocks>`.
+Unbound keys in Controls: "Toggle lyrics", "Lyrics closer", "Lyrics farther".
 
 Settings are saved in `config/markielyrics.json`. Your Spotify login (a refresh token) is stored there too,
 so don't share that file.

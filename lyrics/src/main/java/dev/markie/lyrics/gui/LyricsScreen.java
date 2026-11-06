@@ -231,7 +231,7 @@ public class LyricsScreen extends Screen {
         }
 
         Ui.text(ctx, Ui.t("Markie Lyrics"), px + 11, py + ph - 23, Ui.alpha(Ui.MUTED, alpha));
-        Ui.text(ctx, Ui.t("v1.1 · Right Shift"), px + 11, py + ph - 14, Ui.alpha(0xFF8E879C, alpha));
+        Ui.text(ctx, Ui.t("v1.2 · Right Shift"), px + 11, py + ph - 14, Ui.alpha(0xFF8E879C, alpha));
     }
 
     private void drawHeader(DrawContext ctx, float alpha) {
@@ -298,8 +298,48 @@ public class LyricsScreen extends Screen {
         y = toggle(ctx, y, a, dt, "Follow view", "On: lyrics move with you when you turn. Off: they stay where they appeared.", () -> c.followView, v -> c.followView = v);
         y = toggle(ctx, y, a, dt, "Curved lines", "Bend each line into a soft arc", () -> c.curved, v -> c.curved = v);
         y = toggle(ctx, y, a, dt, "Show through blocks", "Lyrics are never hidden behind hills or trees", () -> c.throughWalls, v -> c.throughWalls = v);
+        y = position(ctx, y, a, dt);
+        y = section(ctx, "Timing", y, a);
         y = slider(ctx, y, a, "Timing offset", "Lyrics early or late? Nudge them here.", (c.offsetMs > 0 ? "+" : "") + c.offsetMs + " ms",
             (c.offsetMs + 2000) / 4000f, f -> c.offsetMs = (int) (Math.round((f * 4000 - 2000) / 50.0) * 50));
+        return y;
+    }
+
+    /** Distance / height / spread controls; only the ones that matter for the current mode are shown. */
+    private int position(DrawContext ctx, int y, float a, float dt) {
+        LyricsConfig c = LyricsConfig.get();
+        y = section(ctx, "Position", y, a);
+        switch (c.where) {
+            case SKY -> {
+                int fog = client == null ? 0 : Math.round(Math.max(16f, client.options.getClampedViewDistance() * 16f * 0.6f));
+                boolean capped = c.fitFog && fog > 0 && fog < c.skyDistance;
+                y = slider(ctx, y, a, "Distance", capped ? "Limited to " + fog + " blocks by your render distance" : "How far away the words are written",
+                    Math.round(c.skyDistance) + " blocks", (c.skyDistance - 16f) / 112f,
+                    f -> c.skyDistance = Math.round(16f + (float) f * 112f));
+                y = slider(ctx, y, a, "Height", "How high above the horizon lines appear",
+                    Math.round(c.skyHeight) + "°", c.skyHeight / 70f, f -> c.skyHeight = Math.round((float) f * 70f));
+                y = toggle(ctx, y, a, dt, "Stay in front of fog", "Pull lyrics closer if your render distance is low",
+                    () -> c.fitFog, v -> c.fitFog = v);
+            }
+            case FLOATING -> {
+                y = slider(ctx, y, a, "Distance", "How far in front of you the words float",
+                    String.format("%.1f blocks", c.floatDistance), (c.floatDistance - 2f) / 22f,
+                    f -> c.floatDistance = Math.round((2f + (float) f * 22f) * 2f) / 2f);
+                y = slider(ctx, y, a, "Height", "Above (+) or below (-) where you look",
+                    (c.floatHeight > 0 ? "+" : "") + Math.round(c.floatHeight) + "°", (c.floatHeight + 20f) / 50f,
+                    f -> c.floatHeight = Math.round(-20f + (float) f * 50f));
+            }
+            case SCREEN -> y = slider(ctx, y, a, "Height on screen", "Where the subtitles sit",
+                Math.round(c.screenY * 100) + "%", (c.screenY - 0.05f) / 0.9f,
+                f -> c.screenY = Math.round((0.05f + (float) f * 0.9f) * 100f) / 100f);
+        }
+        if (c.where != LyricsConfig.Where.SCREEN) {
+            y = slider(ctx, y, a, "Spread", "How far left and right new lines can land",
+                Math.round(c.spread * 100) + "%", c.spread / 2f, f -> c.spread = Math.round((float) f * 40f) / 20f);
+            y = toggle(ctx, y, a, dt, "Shrink with distance", "On: farther lyrics look smaller. Off: same size at any distance",
+                () -> c.scaleWithDistance, v -> c.scaleWithDistance = v);
+            y = paragraph(ctx, y, a, "Tip: bind \"Lyrics closer\" / \"Lyrics farther\" in Controls to change the distance while you play.");
+        }
         return y;
     }
 
@@ -364,8 +404,6 @@ public class LyricsScreen extends Screen {
         y = section(ctx, "Size", y, a);
         y = slider(ctx, y, a, "Lyrics size", "How big the words are", Math.round(c.size * 100) + "%",
             (c.size - 0.5f) / 1.5f, f -> c.size = Math.round((0.5f + (float) f * 1.5f) * 20f) / 20f);
-        y = slider(ctx, y, a, "Distance", "How far away the words float", Math.round(c.distance * 100) + "%",
-            (c.distance - 0.5f) / 1.5f, f -> c.distance = Math.round((0.5f + (float) f * 1.5f) * 20f) / 20f);
         y = toggle(ctx, y, a, dt, "Glow", "Soft glow around the words", () -> c.glow, v -> c.glow = v);
         y = toggle(ctx, y, a, dt, "Shadow", "Classic Minecraft text shadow", () -> c.shadow, v -> c.shadow = v);
         return y;

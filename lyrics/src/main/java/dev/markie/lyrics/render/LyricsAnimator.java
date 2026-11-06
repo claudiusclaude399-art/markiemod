@@ -27,7 +27,9 @@ public final class LyricsAnimator {
         public net.minecraft.util.math.Vec3d origin;
         // placement, picked randomly when the line appears so every line lands somewhere new
         public final float baseYaw, basePitch;
-        public final float yawOff, pitchOff, roll, twist;
+        /** Random 0..1 picks; turned into angles at draw time so Position settings apply instantly. */
+        public final float rYaw, rPitch;
+        public final float roll, twist;
         // cached layout
         public final Text[] wordText;
         public final float[] wordWidth;
@@ -40,13 +42,13 @@ public final class LyricsAnimator {
             this.basePitch = camPitch;
             Random r = new Random(seed);
             if (where == LyricsConfig.Where.SKY) {
-                yawOff = (r.nextFloat() - 0.5f) * 56f;
-                pitchOff = -(17f + r.nextFloat() * 18f);   // up into the sky
+                rYaw = r.nextFloat();
+                rPitch = r.nextFloat();
                 roll = (r.nextFloat() - 0.5f) * 20f;
                 twist = (r.nextFloat() - 0.5f) * 44f;
             } else {
-                yawOff = (r.nextFloat() - 0.5f) * 16f;
-                pitchOff = -(5f + r.nextFloat() * 6f);
+                rYaw = r.nextFloat();
+                rPitch = r.nextFloat();
                 roll = (r.nextFloat() - 0.5f) * 8f;
                 twist = (r.nextFloat() - 0.5f) * 20f;
             }
@@ -129,6 +131,17 @@ public final class LyricsAnimator {
                 active = null;
             }
         }
+    }
+
+    /** Left/right offset in degrees for this line. */
+    public static float yawOffset(Shown s, boolean sky) {
+        return (s.rYaw - 0.5f) * (sky ? 56f : 16f) * LyricsConfig.get().spread;
+    }
+
+    /** Up/down offset in degrees (negative = up, Minecraft style). */
+    public static float pitchOffset(Shown s, boolean sky) {
+        LyricsConfig c = LyricsConfig.get();
+        return sky ? -(c.skyHeight + s.rPitch * 18f) : -(c.floatHeight + s.rPitch * 6f * Math.min(1f, c.spread));
     }
 
     /** Colour for word i of n with alpha applied (ARGB). */

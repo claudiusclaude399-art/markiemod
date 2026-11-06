@@ -33,7 +33,16 @@ public class LyricsConfig {
     public int theme = 0;
     public int font = 0;
     public float size = 1.0f;         // 0.5 .. 2.0
-    public float distance = 1.0f;     // 0.5 .. 2.0 (multiplier)
+
+    // Position
+    public float skyDistance = 46f;   // blocks, 16 .. 128
+    public float floatDistance = 7f;  // blocks, 2 .. 24
+    public float skyHeight = 17f;     // degrees above the horizon, 0 .. 70
+    public float floatHeight = 5f;    // degrees above where you look, -20 .. 30
+    public float spread = 1f;         // how far left/right lines wander, 0 .. 2
+    public float screenY = 0.70f;     // screen mode: 0 = top, 1 = bottom
+    public boolean fitFog = true;     // keep sky lyrics inside your render distance
+    public boolean scaleWithDistance = false; // true: farther = smaller on screen
     public boolean glow = true;
     public boolean shadow = false;
 
@@ -87,7 +96,12 @@ public class LyricsConfig {
         if (where == null) where = Where.SKY;
         if (reveal == null) reveal = Reveal.WORD;
         size = clamp(size, 0.5f, 2f);
-        distance = clamp(distance, 0.5f, 2f);
+        skyDistance = clamp(skyDistance, 16f, 128f);
+        floatDistance = clamp(floatDistance, 2f, 24f);
+        skyHeight = clamp(skyHeight, 0f, 70f);
+        floatHeight = clamp(floatHeight, -20f, 30f);
+        spread = clamp(spread, 0f, 2f);
+        screenY = clamp(screenY, 0.05f, 0.95f);
         uiVolume = clamp(uiVolume, 0f, 1f);
         if (theme < 0 || theme >= dev.markie.lyrics.gui.Themes.ALL.length) theme = 0;
         if (font < 0 || font >= dev.markie.lyrics.gui.Fonts.ALL.length) font = 0;
