@@ -8,6 +8,7 @@ public record NowPlaying(String id, String title, String artist, String album, S
     public long positionNow() {
         long p = progressMs;
         if (playing) p += System.currentTimeMillis() - sampledAt;
-        return Math.max(0, Math.min(p, durationMs));
+        // durationMs 0 = unknown (some players don't report it)
+        return durationMs <= 0 ? Math.max(0, p) : Math.max(0, Math.min(p, durationMs));
     }
 }

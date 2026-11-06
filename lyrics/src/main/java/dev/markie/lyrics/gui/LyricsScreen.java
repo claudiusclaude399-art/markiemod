@@ -248,7 +248,7 @@ public class LyricsScreen extends Screen {
         }
 
         Ui.text(ctx, Ui.t("Markie Lyrics"), px + 11, py + ph - 23, Ui.alpha(Ui.MUTED, alpha));
-        Ui.text(ctx, Ui.t("v1.5 · Right Shift"), px + 11, py + ph - 14, Ui.alpha(0xFF8E879C, alpha));
+        Ui.text(ctx, Ui.t("v1.6 · Right Shift"), px + 11, py + ph - 14, Ui.alpha(0xFF8E879C, alpha));
     }
 
     private void drawHeader(DrawContext ctx, float alpha) {
@@ -257,8 +257,9 @@ public class LyricsScreen extends Screen {
         Ui.text(ctx, Ui.t(tab.subtitle), hx, hy + 13, Ui.alpha(Ui.MUTED, alpha));
 
         // connection chip
-        boolean connected = SpotifyAuth.isLoggedIn();
-        Text t = Ui.t(connected ? "Spotify connected" : "Not connected");
+        boolean localOk = SpotifyClient.usingLocal() && SpotifyClient.current() != null;
+        boolean connected = localOk || (SpotifyAuth.isLoggedIn() && SpotifyClient.webBlockedReason() == null);
+        Text t = Ui.t(localOk ? "Spotify app" : connected ? "Spotify connected" : "Not connected");
         int w = textRenderer.getWidth(t) + 18;
         int x = mainX + mainW - w - 10;
         String id = "chip";
@@ -298,7 +299,7 @@ public class LyricsScreen extends Screen {
         y = section(ctx, "Tips", y, a);
         y = paragraph(ctx, y, a, "Press Right Shift (or type /lyrics) to open this menu. You can change the key in Controls.");
         y = paragraph(ctx, y, a, "Lyrics come from LRCLIB, a free lyrics database. Not every song has synced lyrics.");
-        if (!SpotifyAuth.isLoggedIn()) {
+        if (SpotifyClient.current() == null && !SpotifyAuth.isLoggedIn() && !SpotifyClient.usingLocal()) {
             y = button(ctx, y + 2, a, dt, "Connect Spotify →", true, () -> switchTab(Tab.SPOTIFY));
         }
         return y;
@@ -763,30 +764,73 @@ public class LyricsScreen extends Screen {
     private int spotify(DrawContext ctx, int y, float a, float dt) {
         LyricsConfig c = LyricsConfig.get();
         boolean connected = SpotifyAuth.isLoggedIn();
-        y = section(ctx, "Account", y, a);
+        boolean local = SpotifyClient.usingLocal();
+
+        y = section(ctx, "Where songs come from", y, a);
+        String srcDesc = switch (c.source) {
+            case AUTO -> "Web API if it works, otherwise the Spotify app on this PC";
+            case LOCAL -> "Reads the Spotify app on this computer. No Premium or login needed";
+            case WEB -> "Only the Spotify Web API (needs a developer app)";
+        };
+        y = segmented(ctx, y, a, dt, "Source", srcDesc, new String[]{"Auto", "This PC", "Web API"}, c.source.ordinal(), i -> {
+            c.source = LyricsConfig.Source.values()[i];
+            SpotifyClient.clearWebBlock();
+        });
 
         // status card
         int ch = 30;
         Glass.card(ctx, contentX, y, contentW, ch, 10, 0.2f, a);
-        int dot = connected ? Ui.GREEN : SpotifyAuth.state == SpotifyAuth.State.FAILED ? 0xFFFF6B6B : 0xFFE8C66A;
+        boolean ok = SpotifyClient.current() != null;
+        int dot = ok ? Ui.GREEN : SpotifyClient.webBlockedReason() != null && !local ? 0xFFFF6B6B : 0xFFE8C66A;
         Glass.solid(ctx, contentX + 8, y + 8, 6, 6, 3, Ui.alpha(dot, a));
-        Ui.text(ctx, Ui.t(connected ? "Connected" : "Not connected"), contentX + 19, y + 6, Ui.alpha(Ui.TEXT, a));
-        String sub = SpotifyAuth.message.isEmpty() ? (connected ? SpotifyClient.status() : "Follow the steps below") : SpotifyAuth.message;
-        if (connected && SpotifyAuth.state != SpotifyAuth.State.FAILED) sub = SpotifyClient.status();
-        Ui.text(ctx, Ui.t(Ui.ellipsize(null, sub, contentW - 100, Ui.FONT)), contentX + 19, y + 17, Ui.alpha(Ui.MUTED, a));
+        String head = local ? "Spotify app on this PC" : connected ? "Spotify Web API" : "Not connected";
+        Ui.text(ctx, Ui.t(head), contentX + 19, y + 6, Ui.alpha(Ui.TEXT, a));
+        String sub = SpotifyClient.status();
+        if (!local && !connected && !SpotifyAuth.message.isEmpty()) sub = SpotifyAuth.message;
         int bw = 70;
-        if (connected) {
-            smallButton(ctx, contentX + contentW - bw - 6, y + 7, bw, 16, a, dt, "Log out", false, SpotifyAuth::logout);
-        } else {
-            boolean waiting = SpotifyAuth.state == SpotifyAuth.State.WAITING_FOR_BROWSER;
-            smallButton(ctx, contentX + contentW - bw - 6, y + 7, bw, 16, a, dt, waiting ? "Retry" : "Connect", true, () -> {
-                LyricsConfig.save();
-                SpotifyAuth.startLogin();
-            });
+        boolean showWeb = c.source != LyricsConfig.Source.LOCAL;
+        Ui.text(ctx, Ui.t(Ui.ellipsize(null, sub, contentW - (showWeb ? 100 : 30), Ui.FONT)), contentX + 19, y + 17, Ui.alpha(Ui.MUTED, a));
+        if (showWeb) {
+            if (connected) {
+                smallButton(ctx, contentX + contentW - bw - 6, y + 7, bw, 16, a, dt, "Log out", false, SpotifyAuth::logout);
+            } else {
+                boolean waiting = SpotifyAuth.state == SpotifyAuth.State.WAITING_FOR_BROWSER;
+                smallButton(ctx, contentX + contentW - bw - 6, y + 7, bw, 16, a, dt, waiting ? "Retry" : "Connect", true, () -> {
+                    LyricsConfig.save();
+                    SpotifyAuth.startLogin();
+                });
+            }
         }
         y += ch + 6;
 
-        y = section(ctx, "Client ID", y, a);
+        // explain Spotify's 403 instead of leaving people guessing
+        String blocked = SpotifyClient.webBlockedReason();
+        if (blocked != null && c.source != LyricsConfig.Source.LOCAL) {
+            String text = "Spotify blocked the Web API: \"" + blocked + "\". Since February 2026 the account that created the "
+                + "developer app needs Spotify Premium, and other accounts must be added under User Management in the dashboard. "
+                + (c.source == LyricsConfig.Source.AUTO
+                    ? "No problem: Auto has switched to reading the Spotify app on this PC."
+                    : "No Premium? Pick \"This PC\" above: it reads the Spotify app on your computer instead.");
+            java.util.List<net.minecraft.text.OrderedText> lines = textRenderer.wrapLines(Ui.t(text), contentW - 16);
+            int h = lines.size() * 10 + 10;
+            Glass.tinted(ctx, contentX, y, contentW, h, 10, 0xFF6B6B, 0.18f, a);
+            int yy = y + 5;
+            for (net.minecraft.text.OrderedText l : lines) {
+                ctx.drawText(textRenderer, l, contentX + 8, yy, Ui.alpha(0xFFFFE0E0, a), false);
+                yy += 10;
+            }
+            y += h + 6;
+        }
+
+        if (!showWeb) {
+            clientIdField.setY(-1000);
+            y = paragraph(ctx, y, a, "Just open the Spotify app (desktop) and play a song. Lyrics, title and cover come straight from it, "
+                + "and the play/skip buttons work too. On Linux this needs playerctl.");
+            return y;
+        }
+
+        y = section(ctx, "Web API (optional)", y, a);
+        y = paragraph(ctx, y, a, "Gives the best timing and works for the Spotify phone app too, but Spotify now requires the app owner to have Premium.");
         int fy = y;
         clientIdField.setX(contentX + 6);
         clientIdField.setY(fy + 5);
@@ -796,8 +840,7 @@ public class LyricsScreen extends Screen {
         if (focused) Glass.tinted(ctx, contentX, fy, contentW, 18, 9, Themes.current().glow(), 0.15f, a);
         y += 23;
 
-        y = section(ctx, "How to connect (one time)", y, a);
-        y = step(ctx, y, a, "1", "Open the Spotify Developer Dashboard and log in.");
+        y = step(ctx, y, a, "1", "Open the Spotify Developer Dashboard and log in (with a Premium account).");
         y = button(ctx, y, a, dt, "Open developer.spotify.com", false,
             () -> Util.getOperatingSystem().open(URI.create("https://developer.spotify.com/dashboard")));
         y = step(ctx, y, a, "2", "Click \"Create app\". Any name works. Tick \"Web API\".");
@@ -807,7 +850,8 @@ public class LyricsScreen extends Screen {
             Sounds.play(Sounds.TOGGLE_ON);
         });
         y = step(ctx, y, a, "4", "Save, copy the app's Client ID, paste it above, then press Connect.");
-        y = paragraph(ctx, y, a, "Your login is stored only in config/markielyrics.json on this computer. Play/pause/skip buttons need Spotify Premium.");
+        y = step(ctx, y, a, "5", "Using a different Spotify account than the one that made the app? Add it under User Management.");
+        y = paragraph(ctx, y, a, "Your login is stored only in config/markielyrics.json on this computer.");
         return y;
     }
 
@@ -839,8 +883,8 @@ public class LyricsScreen extends Screen {
         Glass.card(ctx, x, y, w, h, 12, 0.25f, a);
         if (np == null) {
             coverPlaceholder(ctx, x + 6, y + 6, 32, a * 0.5f);
-            Ui.text(ctx, Ui.t(SpotifyAuth.isLoggedIn() ? "Nothing playing" : "Spotify not connected"), x + 45, y + 10, Ui.alpha(Ui.TEXT, a));
-            Ui.text(ctx, Ui.t(SpotifyAuth.isLoggedIn() ? "Start a song in Spotify" : "Open the Spotify tab to connect"), x + 45, y + 22, Ui.alpha(Ui.MUTED, a));
+            Ui.text(ctx, Ui.t("Nothing playing"), x + 45, y + 10, Ui.alpha(Ui.TEXT, a));
+            Ui.text(ctx, Ui.t(Ui.ellipsize(null, SpotifyClient.status(), w - 55, Ui.FONT)), x + 45, y + 22, Ui.alpha(Ui.MUTED, a));
             return y + h + 6;
         }
         Identifier cover = CoverArt.texture();
@@ -869,7 +913,7 @@ public class LyricsScreen extends Screen {
         int bw = textRenderer.getWidth(bt) + 8;
         Glass.tinted(ctx, tx, y + 26, bw, 11, 5, bc & 0xFFFFFF, 0.22f, a);
         Ui.text(ctx, bt, tx + 4, y + 28, Ui.alpha(bc, a));
-        Ui.text(ctx, Ui.t(Ui.time(np.positionNow()) + " / " + Ui.time(np.durationMs())), tx + bw + 6, y + 28, Ui.alpha(0xFFB4ADC2, a));
+        Ui.text(ctx, Ui.t(Ui.time(np.positionNow()) + " / " + (np.durationMs() > 0 ? Ui.time(np.durationMs()) : "--:--")), tx + bw + 6, y + 28, Ui.alpha(0xFFB4ADC2, a));
 
         // progress bar
         float prog = np.durationMs() <= 0 ? 0 : np.positionNow() / (float) np.durationMs();

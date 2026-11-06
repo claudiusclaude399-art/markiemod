@@ -16,6 +16,8 @@ public class LyricsConfig {
     public enum ColorMode { THEME, CUSTOM, RAINBOW, ALBUM, SKY }
     public enum PopStyle { SMOOTH, POP, BOUNCE, ZOOM, SPIN, SLIDE, FADE }
     public enum Preset { CINEMATIC, SPARKLE, MINIMAL, CUSTOM }
+    /** Where song info comes from: Auto (Web API if it works, else the app on this PC), the PC app only, or the Web API only. */
+    public enum Source { AUTO, LOCAL, WEB }
 
     /** Bumped when defaults change in a way old configs should pick up. */
     public int configVersion = 0;   // missing in old files -> 0; new files are written with 2
@@ -25,6 +27,7 @@ public class LyricsConfig {
     public enum Atmo { NONE, FIREFLIES, STARDUST, SNOW, PETALS, EMBERS }
 
     // Spotify
+    public Source source = Source.AUTO;
     public String clientId = "";
     public String refreshToken = "";
     public transient String accessToken = "";
@@ -198,6 +201,7 @@ public class LyricsConfig {
         if (colorMode == null) colorMode = ColorMode.THEME;
         if (popStyle == null) popStyle = PopStyle.SMOOTH;
         if (preset == null) preset = Preset.CUSTOM;
+        if (source == null) source = Source.AUTO;
         depthAmount = clamp(depthAmount, 0.3f, 2f);
         if (vfx == null) vfx = Vfx.SPARKLES;
         if (exit == null) exit = Exit.FADE_UP;

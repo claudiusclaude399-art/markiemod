@@ -120,8 +120,9 @@ public final class LyricsManager {
         String title = cleanTitle(np.title());
 
         // 1) exact match by title/artist/album/duration
+        boolean knowDuration = np.durationMs() > 0;
         String url = "https://lrclib.net/api/get?track_name=" + enc(title) + "&artist_name=" + enc(artist)
-            + "&album_name=" + enc(np.album()) + "&duration=" + Math.round(np.durationMs() / 1000.0);
+            + "&album_name=" + enc(np.album()) + (knowDuration ? "&duration=" + Math.round(np.durationMs() / 1000.0) : "");
         HttpResponse<String> res = get(url);
         if (res.statusCode() == 200) {
             JsonObject o = JsonParser.parseString(res.body()).getAsJsonObject();
@@ -140,7 +141,7 @@ public final class LyricsManager {
                 String synced = syncedOf(o);
                 if (synced == null) continue;
                 double dur = o.has("duration") && !o.get("duration").isJsonNull() ? o.get("duration").getAsDouble() : 0;
-                double diff = Math.abs(dur - np.durationMs() / 1000.0);
+                double diff = knowDuration ? Math.abs(dur - np.durationMs() / 1000.0) : 0;
                 if (diff < bestDiff) { bestDiff = diff; best = synced; }
             }
             if (best != null && bestDiff < 8) return LrcParser.parse(best);

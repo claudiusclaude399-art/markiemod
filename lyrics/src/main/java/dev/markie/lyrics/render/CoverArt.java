@@ -51,7 +51,30 @@ public final class CoverArt {
                 HttpResponse<byte[]> res = HTTP.send(HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofSeconds(10)).GET().build(),
                     HttpResponse.BodyHandlers.ofByteArray());
                 if (res.statusCode() != 200) return;
-                BufferedImage src = ImageIO.read(new ByteArrayInputStream(res.body()));
+                decode(url, res.body());
+            } catch (Exception e) {
+                System.err.println("[MarkieLyrics] Cover download failed: " + e);
+            }
+        });
+    }
+
+    /** Use an image we already have (e.g. the thumbnail Windows gives us). {@code key} identifies the song. */
+    public static void requestBytes(String key, byte[] data) {
+        wantedUrl = key;
+        if (data == null || data.length == 0) { ready = false; hasPal = false; return; }
+        CompletableFuture.runAsync(() -> {
+            try {
+                decode(key, data);
+            } catch (Exception e) {
+                System.err.println("[MarkieLyrics] Cover decode failed: " + e);
+            }
+        });
+    }
+
+    private static void decode(String url, byte[] data) throws Exception {
+        {
+            {
+                BufferedImage src = ImageIO.read(new ByteArrayInputStream(data));
                 if (src == null) return;
                 int[] argb = new int[SIZE * SIZE];
                 for (int y = 0; y < SIZE; y++) for (int x = 0; x < SIZE; x++) {
@@ -91,10 +114,8 @@ public final class CoverArt {
                     }
                     ready = true;
                 });
-            } catch (Exception e) {
-                System.err.println("[MarkieLyrics] Cover download failed: " + e);
             }
-        });
+        }
     }
 
     /** Bucket pixels by hue, weighted by how colourful they are; return the two strongest (brightened). */

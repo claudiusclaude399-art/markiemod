@@ -43,13 +43,15 @@ Client-side only, so it works on any server.
 - **Preview mode** with a built-in demo song, so you can try every look without Spotify
 
 ## Using it
-1. Put `markielyrics-1.5.0.jar` and Fabric API in your `mods` folder.
+1. Put `markielyrics-1.6.0.jar` and Fabric API in your `mods` folder.
 2. In game press **Right Shift** (or type `/lyrics`) to open the menu.
-3. Go to the **Spotify** tab and follow the 4 steps (one time only):
-   - Open <https://developer.spotify.com/dashboard>, click **Create app**, tick **Web API**
-   - Add the Redirect URI `http://127.0.0.1:43821/callback`
-   - Copy the app's **Client ID**, paste it in the menu, press **Connect**, log in in your browser
-4. Play a song in Spotify. Lyrics show up in the sky.
+3. Play a song in the **Spotify desktop app**. That's it: by default (Source: **Auto**) the mod reads what the
+   Spotify app on your computer is playing, with no login and no Premium needed
+   (Windows: system media controls, macOS: the Spotify app, Linux: needs `playerctl`).
+4. Optional, the **Web API** (also follows the Spotify phone app): in the Spotify tab, follow the steps to make a
+   developer app and press Connect. **Since February 2026 Spotify only allows this if the account that created the
+   developer app has Spotify Premium**, and other accounts must be added under User Management. Without that, every
+   request fails with "403"; the menu shows Spotify's exact message, and Auto falls back to the desktop app.
 
 Commands: `/lyrics`, `/lyrics connect`, `/lyrics toggle`, `/lyrics distance <blocks>`.
 Unbound keys in Controls: "Toggle lyrics", "Lyrics closer", "Lyrics farther".

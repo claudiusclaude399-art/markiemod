@@ -117,6 +117,7 @@ public final class SpotifyAuth {
         if (tokenRequest(form)) {
             state = State.CONNECTED;
             message = "Connected to Spotify!";
+            SpotifyClient.clearWebBlock();
             dev.markie.lyrics.Sounds.playLater(dev.markie.lyrics.Sounds.CONNECT);
         }
     }
