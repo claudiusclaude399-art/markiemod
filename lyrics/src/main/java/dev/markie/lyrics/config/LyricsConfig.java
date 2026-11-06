@@ -16,6 +16,8 @@ public class LyricsConfig {
     public enum ColorMode { THEME, CUSTOM, RAINBOW, ALBUM }
     public enum PopStyle { POP, BOUNCE, ZOOM, SPIN, SLIDE, FADE }
     public enum Vfx { NONE, SPARKLES, STARS, HEARTS, NOTES, GLITTER }
+    public enum Exit { FADE_UP, DISSOLVE, BLOW, SHRINK, DROP }
+    public enum Atmo { NONE, FIREFLIES, STARDUST, SNOW, PETALS, EMBERS }
 
     // Spotify
     public String clientId = "";
@@ -65,6 +67,25 @@ public class LyricsConfig {
     public boolean wave = false;
     public boolean shimmer = true;
     public boolean echo = true;
+    public boolean perLetter = false;
+    public boolean highlight = true;
+    public boolean bloom = true;
+    public boolean shockwave = true;
+    public boolean streak = true;
+    public boolean aura = true;
+    public Exit exit = Exit.FADE_UP;
+
+    // Atmosphere
+    public Atmo atmo = Atmo.FIREFLIES;
+    public float atmoDensity = 1f;    // 0.25 .. 2
+    public float atmoSize = 1f;       // 0.5 .. 2
+    public boolean atmoLyricColors = false;
+    public boolean atmoOnlyMusic = true;
+    public float vignette = 0.35f;    // 0 .. 1
+    public boolean vignetteTint = true;
+    public float haze = 0.25f;        // 0 .. 1
+    public boolean linePulse = true;
+    public boolean cinemaBars = false;
 
     // Sky
     public boolean skyEnabled = false;
@@ -126,6 +147,12 @@ public class LyricsConfig {
         if (colorMode == null) colorMode = ColorMode.THEME;
         if (popStyle == null) popStyle = PopStyle.POP;
         if (vfx == null) vfx = Vfx.SPARKLES;
+        if (exit == null) exit = Exit.FADE_UP;
+        if (atmo == null) atmo = Atmo.FIREFLIES;
+        atmoDensity = clamp(atmoDensity, 0.25f, 2f);
+        atmoSize = clamp(atmoSize, 0.5f, 2f);
+        vignette = clamp(vignette, 0f, 1f);
+        haze = clamp(haze, 0f, 1f);
         rainbowSpeed = clamp(rainbowSpeed, 0f, 2f);
         rainbowSpread = clamp(rainbowSpread, 0f, 1f);
         opacity = clamp(opacity, 0.2f, 1f);

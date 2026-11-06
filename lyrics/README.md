@@ -19,6 +19,13 @@ Client-side only, so it works on any server.
 - **Effects:** 6 pop-in styles (Pop, Bounce, Zoom, Spin, Slide, Fade), flash echo, shimmer, wave, and
   particle bursts on every word (Sparkles, Stars, Hearts, Notes, Glitter) with an amount slider.
   The Colours and Effects tabs show a live preview
+- **Pop-up VFX:** bloom flash and lens flare as each word lands, shockwave rings, a light streak across every
+  new line, a soft aura behind the words, karaoke highlight on the word being sung, and letter-by-letter
+  reveals
+- **Exit animations:** Fade up, Dissolve (words break into glitter), Blow away, Shrink, Drop
+- **Atmosphere:** particles drifting around you (Fireflies, Stardust, Snow, Petals, Embers) with density,
+  size and lyric-colour tint, plus screen mood: coloured vignette, haze, a glow pulse on each new line and
+  cinematic bars. Fades out when the music is paused
 - **Skies:** 12 custom skyboxes made by the mod (Galaxy, Aurora, Nebula, Sunset, Golden Hour, Cotton Candy,
   Blood Moon, Ringed Planet, Hyperspace, Clear Day, Starry Night, Lavender Dusk) with brightness, slow
   rotation, keep sun & moon, hide clouds, and fog that matches the sky
@@ -31,7 +38,7 @@ Client-side only, so it works on any server.
 - **Preview mode** with a built-in demo song, so you can try every look without Spotify
 
 ## Using it
-1. Put `markielyrics-1.3.0.jar` and Fabric API in your `mods` folder.
+1. Put `markielyrics-1.4.0.jar` and Fabric API in your `mods` folder.
 2. In game press **Right Shift** (or type `/lyrics`) to open the menu.
 3. Go to the **Spotify** tab and follow the 4 steps (one time only):
    - Open <https://developer.spotify.com/dashboard>, click **Create app**, tick **Web API**

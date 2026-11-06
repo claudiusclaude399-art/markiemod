@@ -17,7 +17,9 @@ import java.util.Random;
 /** Keeps track of which line is on screen, the one fading away, and how each word animates in. */
 public final class LyricsAnimator {
     public static final long WORD_IN_MS = 280;
-    public static final long LINE_OUT_MS = 520;
+    public static final long LINE_OUT_MS = 650;   // each word's exit
+    public static final long EXIT_STAGGER_MS = 45;  // delay between words leaving
+    public static final long LETTER_STAGGER_MS = 35;
 
     public static final class Shown {
         public final LyricLine line;
@@ -33,6 +35,9 @@ public final class LyricsAnimator {
         public final Text[] wordText;
         public final float[] wordWidth;
         public final float spaceWidth, totalWidth;
+        /** Per-letter layout for the "letter by letter" mode. */
+        public final Text[][] letters;
+        public final float[][] letterX, letterW;
 
         public Shown(LyricLine line, float camYaw, float camPitch, LyricsConfig.Where where, long seed) {
             this.line = line;
@@ -62,6 +67,22 @@ public final class LyricsAnimator {
                 wordWidth[i] = tr.getWidth(wordText[i]);
                 total += wordWidth[i];
             }
+            letters = new Text[words.size()][];
+            letterX = new float[words.size()][];
+            letterW = new float[words.size()][];
+            for (int i = 0; i < words.size(); i++) {
+                int[] cps = words.get(i).text().codePoints().toArray();
+                letters[i] = new Text[cps.length];
+                letterX[i] = new float[cps.length];
+                letterW[i] = new float[cps.length];
+                float lx = 0;
+                for (int k = 0; k < cps.length; k++) {
+                    letters[i][k] = Text.literal(new String(Character.toChars(cps[k]))).setStyle(style);
+                    letterW[i][k] = tr.getWidth(letters[i][k]);
+                    letterX[i][k] = lx;
+                    lx += letterW[i][k];
+                }
+            }
             spaceWidth = tr.getWidth(Text.literal(" ").setStyle(style)) * 1.15f;
             totalWidth = total + spaceWidth * Math.max(0, words.size() - 1);
         }
@@ -84,17 +105,45 @@ public final class LyricsAnimator {
             return songPos - t0;
         }
 
-        /** 0..1 overall line opacity (fade in, fade out). */
+        /** 0..1 fade-in of the whole line (leaving is handled per word, see {@link #wordExit}). */
         public float lineAlpha() {
-            long now = System.currentTimeMillis();
-            float in = clamp01((now - appearReal) / 220f);
-            if (leaveReal < 0) return in;
-            return in * (1f - clamp01((now - leaveReal) / (float) LINE_OUT_MS));
+            return clamp01((System.currentTimeMillis() - appearReal) / 220f);
         }
 
-        /** 0..1 progress of the leaving animation. */
+        /** Milliseconds since the line started leaving, or -1. */
+        public long leaveElapsed() {
+            return leaveReal < 0 ? -1 : System.currentTimeMillis() - leaveReal;
+        }
+
+        /** 0..1 exit progress of word i (words leave one after another). */
+        public float wordExit(int i) {
+            long e = leaveElapsed();
+            if (e < 0) return 0;
+            return clamp01((e - i * EXIT_STAGGER_MS) / (float) LINE_OUT_MS);
+        }
+
+        public boolean exitDone() {
+            return leaveReal >= 0 && leaveElapsed() > LINE_OUT_MS + EXIT_STAGGER_MS * wordText.length;
+        }
+
+        /** Overall leave progress (0..1), used for drifting the whole line. */
         public float leaveProgress() {
-            return leaveReal < 0 ? 0 : clamp01((System.currentTimeMillis() - leaveReal) / (float) LINE_OUT_MS);
+            long e = leaveElapsed();
+            if (e < 0) return 0;
+            return clamp01(e / (float) (LINE_OUT_MS + EXIT_STAGGER_MS * wordText.length));
+        }
+
+        /** Milliseconds since word i is actually sung (its real timing, whatever the reveal mode). */
+        public long sungSince(int i, long songPos) {
+            return songPos - line.words().get(i).startMs();
+        }
+
+        /** Index of the word being sung right now, or -1. */
+        public int currentWord(long songPos) {
+            if (leaveReal >= 0) return -1;
+            int cur = -1;
+            for (int i = 0; i < wordText.length; i++) if (sungSince(i, songPos) >= 0) cur = i;
+            return cur;
         }
     }
 
@@ -107,7 +156,7 @@ public final class LyricsAnimator {
     private LyricsAnimator() {}
 
     public static Shown active() { return active; }
-    public static Shown leaving() { return leaving != null && leaving.leaveProgress() >= 1f ? null : leaving; }
+    public static Shown leaving() { return leaving != null && leaving.exitDone() ? null : leaving; }
 
     /** Call once per frame before drawing. */
     public static void update(float camYaw, float camPitch) {
@@ -177,6 +226,8 @@ public final class LyricsAnimator {
     public static float easeOutCubic(float t) { float u = 1 - t; return 1 - u * u * u; }
 
     /** Overshoots a little, for the "pop". */
+    public static float easeInCubic(float t) { return t * t * t; }
+
     public static float easeOutBack(float t) {
         float c1 = 1.70158f, c3 = c1 + 1;
         float u = t - 1;

@@ -28,7 +28,9 @@ public final class HudRenderer {
 
     public static void render(DrawContext ctx, RenderTickCounter tick) {
         MinecraftClient mc = MinecraftClient.getInstance();
-        if (mc.options.hudHidden || mc.player == null) return;
+        if (mc.player == null) return;
+        AtmosphereRenderer.renderOverlay(ctx);
+        if (mc.options.hudHidden) return;
         long nowNs = System.nanoTime();
         float dt = Math.min(0.1f, (nowNs - lastFrame) / 1e9f);
         lastFrame = nowNs;

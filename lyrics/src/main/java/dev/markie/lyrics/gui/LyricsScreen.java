@@ -42,6 +42,7 @@ public class LyricsScreen extends Screen {
         COLOURS("Colours", "◆", "Themes, your own colours, rainbow."),
         EFFECTS("Effects", "✦", "How words pop in, plus particles."),
         SKIES("Skies", "☁", "Custom skyboxes with matching fog."),
+        ATMOSPHERE("Atmosphere", "❄", "Drifting particles and screen mood."),
         HUD("HUD", "▣", "The now-playing pill on your screen."),
         SPOTIFY("Spotify", "◉", "Connect your Spotify account."),
         SOUNDS("Sounds", "♪", "Clicks, chimes and volume.");
@@ -188,6 +189,7 @@ public class LyricsScreen extends Screen {
             case COLOURS -> colours(ctx, y0, ca, dt);
             case EFFECTS -> effects(ctx, y0, ca, dt);
             case SKIES -> skies(ctx, y0, ca, dt);
+            case ATMOSPHERE -> atmosphere(ctx, y0, ca, dt);
             case HUD -> hud(ctx, y0, ca, dt);
             case SPOTIFY -> spotify(ctx, y0, ca, dt);
             case SOUNDS -> sounds(ctx, y0, ca, dt);
@@ -246,7 +248,7 @@ public class LyricsScreen extends Screen {
         }
 
         Ui.text(ctx, Ui.t("Markie Lyrics"), px + 11, py + ph - 23, Ui.alpha(Ui.MUTED, alpha));
-        Ui.text(ctx, Ui.t("v1.3 · Right Shift"), px + 11, py + ph - 14, Ui.alpha(0xFF8E879C, alpha));
+        Ui.text(ctx, Ui.t("v1.4 · Right Shift"), px + 11, py + ph - 14, Ui.alpha(0xFF8E879C, alpha));
     }
 
     private void drawHeader(DrawContext ctx, float alpha) {
@@ -560,6 +562,16 @@ public class LyricsScreen extends Screen {
         y = section(ctx, "Pop-in", y, a);
         y = chips(ctx, y, a, dt, "pop", new String[]{"Pop", "Bounce", "Zoom", "Spin", "Slide", "Fade"}, c.popStyle.ordinal(),
             i -> { c.popStyle = LyricsConfig.PopStyle.values()[i]; restartPreview(); });
+        y = toggle(ctx, y, a, dt, "Letter by letter", "Each letter pops in on its own", () -> c.perLetter, v -> { c.perLetter = v; restartPreview(); });
+        y = section(ctx, "Exit", y, a);
+        y = chips(ctx, y, a, dt, "exit", new String[]{"Fade up", "Dissolve", "Blow away", "Shrink", "Drop"}, c.exit.ordinal(),
+            i -> { c.exit = LyricsConfig.Exit.values()[i]; restartPreview(); });
+        y = section(ctx, "Light", y, a);
+        y = toggle(ctx, y, a, dt, "Bloom flash", "A burst of light behind each word as it lands", () -> c.bloom, v -> c.bloom = v);
+        y = toggle(ctx, y, a, dt, "Shockwave", "A ring ripples out from each word", () -> c.shockwave, v -> c.shockwave = v);
+        y = toggle(ctx, y, a, dt, "Light streak", "A lens flare sweeps across each new line", () -> c.streak, v -> c.streak = v);
+        y = toggle(ctx, y, a, dt, "Aura", "A soft glow behind the words (easier to read)", () -> c.aura, v -> c.aura = v);
+        y = toggle(ctx, y, a, dt, "Highlight sung word", "The word being sung grows and brightens", () -> c.highlight, v -> c.highlight = v);
         y = toggle(ctx, y, a, dt, "Flash echo", "A glowing copy bursts out of each word", () -> c.echo, v -> c.echo = v);
         y = toggle(ctx, y, a, dt, "Shimmer", "A band of light sweeps across the words", () -> c.shimmer, v -> c.shimmer = v);
         y = toggle(ctx, y, a, dt, "Wave", "Words gently bob after they appear", () -> c.wave, v -> c.wave = v);
@@ -605,8 +617,9 @@ public class LyricsScreen extends Screen {
         LyricsConfig c = LyricsConfig.get();
         long now = System.currentTimeMillis();
         int key = c.font * 31 + c.reveal.ordinal();
-        if (preview == null || now - previewStart > 3600 || key != previewKey) restartPreview();
+        if (preview == null || key != previewKey || (preview.leaveReal >= 0 && preview.exitDone()) || now - previewStart > 6000) restartPreview();
         previewKey = key;
+        if (preview.leaveReal < 0 && now - previewStart > 2900) preview.leaveReal = now;
         long pos = 1000 + (now - previewStart);
         float base = Math.min(1.8f, (contentW - 30) / Math.max(1f, preview.totalWidth));
         ctx.enableScissor(contentX + 2, Math.max(contentY, y + 2), contentX + contentW - 2, Math.min(contentY + contentH, y + h - 2));
@@ -670,6 +683,32 @@ public class LyricsScreen extends Screen {
         y = toggle(ctx, y, a, dt, "Hide clouds", "Vanilla clouds look odd in space skies", () -> c.skyHideClouds, v -> c.skyHideClouds = v);
         y = toggle(ctx, y, a, dt, "Match fog", "Tint the horizon fog so the land blends into the sky", () -> c.skyFog, v -> c.skyFog = v);
         y = paragraph(ctx, y, a, "Skies show in the Overworld. They're made by the mod itself, so they work on any server.");
+        return y;
+    }
+
+    // ---------------------------------------------------------------- atmosphere
+
+    private int atmosphere(DrawContext ctx, int y, float a, float dt) {
+        LyricsConfig c = LyricsConfig.get();
+        y = section(ctx, "Particles around you", y, a);
+        y = chips(ctx, y, a, dt, "atmo", new String[]{"None", "Fireflies", "Stardust", "Snow", "Petals", "Embers"}, c.atmo.ordinal(),
+            i -> c.atmo = LyricsConfig.Atmo.values()[i]);
+        if (c.atmo != LyricsConfig.Atmo.NONE) {
+            y = slider(ctx, y, a, "Density", "How many particles float around", Math.round(c.atmoDensity * 100) + "%",
+                (c.atmoDensity - 0.25f) / 1.75f, f -> c.atmoDensity = Math.round((0.25f + (float) f * 1.75f) * 20f) / 20f);
+            y = slider(ctx, y, a, "Particle size", "How big each one is", Math.round(c.atmoSize * 100) + "%",
+                (c.atmoSize - 0.5f) / 1.5f, f -> c.atmoSize = Math.round((0.5f + (float) f * 1.5f) * 20f) / 20f);
+            y = toggle(ctx, y, a, dt, "Lyric colours", "Tint the particles with your lyric colours", () -> c.atmoLyricColors, v -> c.atmoLyricColors = v);
+        }
+        y = section(ctx, "Screen mood", y, a);
+        y = slider(ctx, y, a, "Vignette", "Soft darker edges around the screen", Math.round(c.vignette * 100) + "%",
+            c.vignette, f -> c.vignette = Math.round((float) f * 20f) / 20f);
+        y = toggle(ctx, y, a, dt, "Coloured vignette", "Tint the edges with your lyric colour", () -> c.vignetteTint, v -> c.vignetteTint = v);
+        y = slider(ctx, y, a, "Haze", "A coloured glow at the top of the screen", Math.round(c.haze * 100) + "%",
+            c.haze, f -> c.haze = Math.round((float) f * 20f) / 20f);
+        y = toggle(ctx, y, a, dt, "Pulse on new line", "The screen glows softly when each line starts", () -> c.linePulse, v -> c.linePulse = v);
+        y = toggle(ctx, y, a, dt, "Cinematic bars", "Black bars top and bottom, like a music video", () -> c.cinemaBars, v -> c.cinemaBars = v);
+        y = toggle(ctx, y, a, dt, "Only while music plays", "Fade everything out when the song is paused", () -> c.atmoOnlyMusic, v -> c.atmoOnlyMusic = v);
         return y;
     }
 
