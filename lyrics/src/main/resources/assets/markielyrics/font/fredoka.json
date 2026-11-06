@@ -1,0 +1,5 @@
+{
+  "providers": [
+    { "type": "ttf", "file": "markielyrics:fredoka.ttf", "size": 11, "oversample": 6.0, "shift": [0, 1.5] }
+  ]
+}

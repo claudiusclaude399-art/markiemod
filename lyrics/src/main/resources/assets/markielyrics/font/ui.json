@@ -1,0 +1,5 @@
+{
+  "providers": [
+    { "type": "ttf", "file": "markielyrics:poppins.ttf", "size": 9, "oversample": 4.0, "shift": [0, 1] }
+  ]
+}

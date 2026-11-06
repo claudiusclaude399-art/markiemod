@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "markielyrics",
+  "version": "${version}",
+  "name": "Markie Lyrics",
+  "description": "Live Spotify lyrics floating in 3D in your Minecraft sky, with a now-playing HUD and a slick settings menu.",
+  "authors": ["markie"],
+  "license": "MIT",
+  "environment": "client",
+  "entrypoints": {
+    "client": ["dev.markie.lyrics.MarkieLyricsClient"]
+  },
+  "depends": {
+    "fabricloader": ">=0.18.0",
+    "minecraft": "~1.21.11",
+    "java": ">=21",
+    "fabric-api": "*"
+  }
+}

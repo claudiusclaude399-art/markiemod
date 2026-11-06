@@ -1,0 +1,5 @@
+{
+  "providers": [
+    { "type": "ttf", "file": "markielyrics:pacifico.ttf", "size": 12, "oversample": 6.0, "shift": [0, 0.5] }
+  ]
+}
