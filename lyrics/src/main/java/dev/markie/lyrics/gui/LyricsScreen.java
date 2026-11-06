@@ -3,7 +3,11 @@ package dev.markie.lyrics.gui;
 import dev.markie.lyrics.Sounds;
 import dev.markie.lyrics.config.LyricsConfig;
 import dev.markie.lyrics.lyrics.LyricsManager;
+import dev.markie.lyrics.render.Colors;
 import dev.markie.lyrics.render.CoverArt;
+import dev.markie.lyrics.render.LyricsAnimator;
+import dev.markie.lyrics.sky.SkyLibrary;
+import dev.markie.lyrics.sky.Skybox;
 import dev.markie.lyrics.spotify.NowPlaying;
 import dev.markie.lyrics.spotify.SpotifyAuth;
 import dev.markie.lyrics.spotify.SpotifyClient;
@@ -34,7 +38,10 @@ public class LyricsScreen extends Screen {
     private enum Tab {
         OVERVIEW("Overview", "⌂", "Your music, in your world."),
         LYRICS("Lyrics", "♫", "Spotify lyrics in 3D in the sky."),
-        LOOK("Look", "✦", "Colours, fonts and size."),
+        TEXT("Text", "✎", "Fonts, size and glow."),
+        COLOURS("Colours", "◆", "Themes, your own colours, rainbow."),
+        EFFECTS("Effects", "✦", "How words pop in, plus particles."),
+        SKIES("Skies", "☁", "Custom skyboxes with matching fog."),
         HUD("HUD", "▣", "The now-playing pill on your screen."),
         SPOTIFY("Spotify", "◉", "Connect your Spotify account."),
         SOUNDS("Sounds", "♪", "Clicks, chimes and volume.");
@@ -56,6 +63,11 @@ public class LyricsScreen extends Screen {
     private String hoveredId, lastHoveredId;
     private Hit dragging;
     private long lastSliderSound;
+    private double dragY;
+    private int editingColor = 0;   // 0 = start, 1 = end, 2 = glow (custom colours)
+    private LyricsAnimator.Shown preview;
+    private long previewStart;
+    private int previewKey;
 
     private float openAnim = 0f;
     private boolean closing = false;
@@ -172,7 +184,10 @@ public class LyricsScreen extends Screen {
         int end = switch (tab) {
             case OVERVIEW -> overview(ctx, y0, ca, dt);
             case LYRICS -> lyrics(ctx, y0, ca, dt);
-            case LOOK -> look(ctx, y0, ca, dt);
+            case TEXT -> text(ctx, y0, ca, dt);
+            case COLOURS -> colours(ctx, y0, ca, dt);
+            case EFFECTS -> effects(ctx, y0, ca, dt);
+            case SKIES -> skies(ctx, y0, ca, dt);
             case HUD -> hud(ctx, y0, ca, dt);
             case SPOTIFY -> spotify(ctx, y0, ca, dt);
             case SOUNDS -> sounds(ctx, y0, ca, dt);
@@ -231,7 +246,7 @@ public class LyricsScreen extends Screen {
         }
 
         Ui.text(ctx, Ui.t("Markie Lyrics"), px + 11, py + ph - 23, Ui.alpha(Ui.MUTED, alpha));
-        Ui.text(ctx, Ui.t("v1.2 · Right Shift"), px + 11, py + ph - 14, Ui.alpha(0xFF8E879C, alpha));
+        Ui.text(ctx, Ui.t("v1.3 · Right Shift"), px + 11, py + ph - 14, Ui.alpha(0xFF8E879C, alpha));
     }
 
     private void drawHeader(DrawContext ctx, float alpha) {
@@ -343,42 +358,9 @@ public class LyricsScreen extends Screen {
         return y;
     }
 
-    private int look(DrawContext ctx, int y, float a, float dt) {
+    private int text(DrawContext ctx, int y, float a, float dt) {
         LyricsConfig c = LyricsConfig.get();
-        y = section(ctx, "Colour", y, a);
-        int cols = 3, gap = 4;
-        int cw = (contentW - gap * (cols - 1)) / cols, chh = 22;
-        for (int i = 0; i < Themes.ALL.length; i++) {
-            Themes.Theme th = Themes.ALL[i];
-            int x = contentX + (i % cols) * (cw + gap);
-            int yy = y + (i / cols) * (chh + gap);
-            String id = "theme." + i;
-            boolean hov = hover(x, yy, cw, chh, true);
-            if (hov) hoveredId = id;
-            float h = anim(id, hov ? 1f : 0f, 14f, dt);
-            boolean sel = c.theme == i;
-            if (sel) Glass.tinted(ctx, x, yy, cw, chh, 9, th.glow(), 0.45f, a);
-            else Glass.card(ctx, x, yy, cw, chh, 9, h, a);
-            // name drawn letter by letter in the theme's gradient
-            Text name = Ui.in(th.name(), Fonts.UI);
-            int tw = textRenderer.getWidth(name);
-            int tx = x + (cw - tw) / 2;
-            String s = th.name();
-            for (int k = 0; k < s.length(); k++) {
-                int col = 0xFF000000 | dev.markie.lyrics.render.LyricsAnimator.lerpRgb(th.a(), th.b(), s.length() <= 1 ? 0 : k / (float) (s.length() - 1));
-                Text ch = Ui.in(String.valueOf(s.charAt(k)), Fonts.UI);
-                Ui.text(ctx, ch, tx, yy + 5, Ui.alpha(col, a));
-                tx += textRenderer.getWidth(ch);
-            }
-            // little swatch line
-            int sx = x + cw / 2 - 8;
-            ctx.fill(sx, yy + chh - 5, sx + 8, yy + chh - 4, Ui.alpha(0xFF000000 | th.a(), a));
-            ctx.fill(sx + 8, yy + chh - 5, sx + 16, yy + chh - 4, Ui.alpha(0xFF000000 | th.b(), a));
-            final int idx = i;
-            hits.add(new Hit(x, yy, cw, chh, id, () -> { c.theme = idx; Sounds.play(Sounds.CLICK, 1.1f); }, null, true));
-        }
-        y += ((Themes.ALL.length + cols - 1) / cols) * (chh + gap) + 4;
-
+        int cols, gap = 4, cw, chh;
         y = section(ctx, "Font", y, a);
         cols = 2;
         cw = (contentW - gap) / cols;
@@ -406,6 +388,288 @@ public class LyricsScreen extends Screen {
             (c.size - 0.5f) / 1.5f, f -> c.size = Math.round((0.5f + (float) f * 1.5f) * 20f) / 20f);
         y = toggle(ctx, y, a, dt, "Glow", "Soft glow around the words", () -> c.glow, v -> c.glow = v);
         y = toggle(ctx, y, a, dt, "Shadow", "Classic Minecraft text shadow", () -> c.shadow, v -> c.shadow = v);
+        return y;
+    }
+
+    // ---------------------------------------------------------------- colours
+
+    private int colours(DrawContext ctx, int y, float a, float dt) {
+        LyricsConfig c = LyricsConfig.get();
+        y = livePreview(ctx, y, a);
+        y = section(ctx, "Colour mode", y, a);
+        String desc = switch (c.colorMode) {
+            case THEME -> "Pick one of the ready-made looks";
+            case CUSTOM -> "Choose your own start, end and glow colours";
+            case RAINBOW -> "Colours flow through the rainbow";
+            case ALBUM -> "Colours picked from the song's album cover";
+        };
+        y = segmented(ctx, y, a, dt, "Mode", desc, new String[]{"Theme", "Custom", "Rainbow", "Album"},
+            c.colorMode.ordinal(), i -> c.colorMode = LyricsConfig.ColorMode.values()[i]);
+        switch (c.colorMode) {
+            case THEME -> y = themeGrid(ctx, y, a, dt);
+            case CUSTOM -> y = customColours(ctx, y, a, dt);
+            case RAINBOW -> {
+                y = slider(ctx, y, a, "Speed", "How fast the colours move", Math.round(c.rainbowSpeed * 100) + "%",
+                    c.rainbowSpeed / 2f, f -> c.rainbowSpeed = Math.round((float) f * 40f) / 20f);
+                y = slider(ctx, y, a, "Spread", "How much of the rainbow fits in one line", Math.round(c.rainbowSpread * 100) + "%",
+                    c.rainbowSpread, f -> c.rainbowSpread = Math.round((float) f * 20f) / 20f);
+            }
+            case ALBUM -> {
+                boolean has = dev.markie.lyrics.render.CoverArt.hasPalette();
+                int h = 26;
+                Glass.card(ctx, contentX, y, contentW, h, 10, 0.2f, a);
+                Ui.text(ctx, Ui.t(has ? "From this cover:" : "No cover yet, using your theme"), contentX + 8, y + 9, Ui.alpha(Ui.TEXT, a));
+                int sx = contentX + contentW - 60;
+                Glass.solid(ctx, sx, y + 6, 22, 14, 7, Ui.alpha(0xFF000000 | Colors.colorA(), a));
+                Glass.solid(ctx, sx + 26, y + 6, 22, 14, 7, Ui.alpha(0xFF000000 | Colors.colorB(), a));
+                y += h + 3;
+            }
+        }
+        y = section(ctx, "Strength", y, a);
+        y = slider(ctx, y, a, "Opacity", "How see-through the lyrics are", Math.round(c.opacity * 100) + "%",
+            (c.opacity - 0.2f) / 0.8f, f -> c.opacity = Math.round((0.2f + (float) f * 0.8f) * 20f) / 20f);
+        return y;
+    }
+
+    private int themeGrid(DrawContext ctx, int y, float a, float dt) {
+        LyricsConfig c = LyricsConfig.get();
+        int cols = 3, gap = 4;
+        int cw = (contentW - gap * (cols - 1)) / cols, chh = 22;
+        for (int i = 0; i < Themes.ALL.length; i++) {
+            Themes.Theme th = Themes.ALL[i];
+            int x = contentX + (i % cols) * (cw + gap);
+            int yy = y + (i / cols) * (chh + gap);
+            String id = "theme." + i;
+            boolean hov = hover(x, yy, cw, chh, true);
+            if (hov) hoveredId = id;
+            float h = anim(id, hov ? 1f : 0f, 14f, dt);
+            boolean sel = c.theme == i;
+            if (sel) Glass.tinted(ctx, x, yy, cw, chh, 9, th.glow(), 0.45f, a);
+            else Glass.card(ctx, x, yy, cw, chh, 9, h, a);
+            gradientText(ctx, th.name(), x + cw / 2, yy + 5, th.a(), th.b(), a);
+            int sx = x + cw / 2 - 8;
+            ctx.fill(sx, yy + chh - 5, sx + 8, yy + chh - 4, Ui.alpha(0xFF000000 | th.a(), a));
+            ctx.fill(sx + 8, yy + chh - 5, sx + 16, yy + chh - 4, Ui.alpha(0xFF000000 | th.b(), a));
+            final int idx = i;
+            hits.add(new Hit(x, yy, cw, chh, id, () -> { c.theme = idx; Sounds.play(Sounds.CLICK, 1.1f); }, null, true));
+        }
+        return y + ((Themes.ALL.length + cols - 1) / cols) * (chh + gap) + 2;
+    }
+
+    private void gradientText(DrawContext ctx, String s, int cx, int y, int ca, int cb, float a) {
+        int tw = textRenderer.getWidth(Ui.in(s, Fonts.UI));
+        int tx = cx - tw / 2;
+        for (int k = 0; k < s.length(); k++) {
+            int col = 0xFF000000 | LyricsAnimator.lerpRgb(ca, cb, s.length() <= 1 ? 0 : k / (float) (s.length() - 1));
+            Text ch = Ui.in(String.valueOf(s.charAt(k)), Fonts.UI);
+            Ui.text(ctx, ch, tx, y, Ui.alpha(col, a));
+            tx += textRenderer.getWidth(ch);
+        }
+    }
+
+    /** Start / end / glow swatches and an HSV picker for the selected one. */
+    private int customColours(DrawContext ctx, int y, float a, float dt) {
+        LyricsConfig c = LyricsConfig.get();
+        String[] names = {"Start", "End", "Glow"};
+        int[] vals = {c.customA, c.customB, c.customGlow};
+        int gap = 4, cw = (contentW - gap * 2) / 3, ch = 22;
+        for (int i = 0; i < 3; i++) {
+            int x = contentX + i * (cw + gap);
+            String id = "swatch." + i;
+            boolean hov = hover(x, y, cw, ch, true);
+            if (hov) hoveredId = id;
+            boolean sel = editingColor == i;
+            if (sel) Glass.tinted(ctx, x, y, cw, ch, 10, vals[i], 0.35f, a);
+            else Glass.card(ctx, x, y, cw, ch, 10, anim(id, hov ? 1f : 0f, 14f, dt), a);
+            Glass.solid(ctx, x + 6, y + 5, 12, 12, 6, Ui.alpha(0xFF000000 | vals[i], a));
+            Ui.text(ctx, Ui.t(names[i]), x + 23, y + 4, Ui.alpha(Ui.TEXT, a));
+            Ui.text(ctx, Ui.t(String.format("#%06X", vals[i])), x + 23, y + 13, Ui.alpha(Ui.MUTED, a));
+            final int idx = i;
+            hits.add(new Hit(x, y, cw, ch, id, () -> { editingColor = idx; Sounds.play(Sounds.CLICK, 1.05f + idx * 0.05f); }, null, true));
+        }
+        y += ch + 6;
+
+        float[] hsv = Colors.toHsv(vals[editingColor]);
+        // saturation/brightness square
+        int bx = contentX, bw = contentW, bh = 54;
+        Glass.well(ctx, bx - 1, y - 1, bw + 2, bh + 2, 4, a);
+        for (int col = 0; col < bw; col += 2) {
+            float sat = col / (float) (bw - 1);
+            int top = 0xFF000000 | Colors.hsv(hsv[0], sat, 1f);
+            ctx.fillGradient(bx + col, y, bx + Math.min(bw, col + 2), y + bh, Ui.alpha(top, a), Ui.alpha(0xFF000000, a));
+        }
+        int mxk = bx + Math.round(hsv[1] * (bw - 1)), myk = y + Math.round((1 - hsv[2]) * (bh - 1));
+        Glass.bead(ctx, mxk - 4, myk - 4, 8, 8, a);
+        Glass.solid(ctx, mxk - 2, myk - 2, 4, 4, 2, Ui.alpha(0xFF000000 | vals[editingColor], a));
+        final int sy = y;
+        hits.add(new Hit(bx, y, bw, bh, "sv", null, vx -> {
+            float sat = (float) Math.max(0, Math.min(1, (vx - bx) / (bw - 1)));
+            float val = (float) Math.max(0, Math.min(1, 1 - (dragY - sy) / (bh - 1)));
+            float[] cur = Colors.toHsv(currentEdited());
+            setEdited(Colors.hsv(cur[0], sat, val));
+        }, true));
+        y += bh + 5;
+
+        // hue bar
+        int hh = 10;
+        Glass.well(ctx, bx - 1, y - 1, bw + 2, hh + 2, 5, a);
+        for (int col = 0; col < bw; col += 2) {
+            ctx.fill(bx + col, y, bx + Math.min(bw, col + 2), y + hh, Ui.alpha(0xFF000000 | Colors.hsv(col / (float) bw, 1f, 1f), a));
+        }
+        int hk = bx + Math.round(hsv[0] * (bw - 1));
+        Glass.bead(ctx, hk - 3, y - 2, 6, hh + 4, a);
+        hits.add(new Hit(bx, y - 2, bw, hh + 4, "hue", null, vx -> {
+            float hue = (float) Math.max(0, Math.min(0.999, (vx - bx) / (bw - 1)));
+            float[] cur = Colors.toHsv(currentEdited());
+            setEdited(Colors.hsv(hue, Math.max(cur[1], 0.05f), Math.max(cur[2], 0.05f)));
+        }, true));
+        y += hh + 6;
+
+        // quick swatches
+        int[] quick = {0xFFFFFF, 0xFFB3E6, 0xFF6B9A, 0xFFC27A, 0xFFE66B, 0x9BF6C3, 0x6BE3FF, 0x9AD0FF, 0xA98BFF, 0xC9A8FF, 0x3DFFE0, 0xFF4DF0};
+        int qs = 14, qg = (contentW - quick.length * qs) / (quick.length - 1);
+        for (int i = 0; i < quick.length; i++) {
+            int x = contentX + i * (qs + qg);
+            String id = "quick." + i;
+            boolean hov = hover(x, y, qs, qs, true);
+            if (hov) hoveredId = id;
+            if (hov) Glass.sheen(ctx, x + qs / 2, y + qs / 2, 26, Glass.argb(0.4f * a, quick[i]));
+            Glass.solid(ctx, x, y, qs, qs, qs / 2, Ui.alpha(0xFF000000 | quick[i], a));
+            Glass.card(ctx, x, y, qs, qs, qs / 2, 0.2f, a * 0.6f);
+            final int col = quick[i];
+            hits.add(new Hit(x, y, qs, qs, id, () -> { setEdited(col); Sounds.play(Sounds.CLICK, 1.2f); }, null, true));
+        }
+        return y + qs + 5;
+    }
+
+    private int currentEdited() {
+        LyricsConfig c = LyricsConfig.get();
+        return editingColor == 0 ? c.customA : editingColor == 1 ? c.customB : c.customGlow;
+    }
+
+    private void setEdited(int rgb) {
+        LyricsConfig c = LyricsConfig.get();
+        if (editingColor == 0) c.customA = rgb; else if (editingColor == 1) c.customB = rgb; else c.customGlow = rgb;
+    }
+
+    // ---------------------------------------------------------------- effects
+
+    private int effects(DrawContext ctx, int y, float a, float dt) {
+        LyricsConfig c = LyricsConfig.get();
+        y = livePreview(ctx, y, a);
+        y = section(ctx, "Pop-in", y, a);
+        y = chips(ctx, y, a, dt, "pop", new String[]{"Pop", "Bounce", "Zoom", "Spin", "Slide", "Fade"}, c.popStyle.ordinal(),
+            i -> { c.popStyle = LyricsConfig.PopStyle.values()[i]; restartPreview(); });
+        y = toggle(ctx, y, a, dt, "Flash echo", "A glowing copy bursts out of each word", () -> c.echo, v -> c.echo = v);
+        y = toggle(ctx, y, a, dt, "Shimmer", "A band of light sweeps across the words", () -> c.shimmer, v -> c.shimmer = v);
+        y = toggle(ctx, y, a, dt, "Wave", "Words gently bob after they appear", () -> c.wave, v -> c.wave = v);
+        y = section(ctx, "Particles", y, a);
+        y = chips(ctx, y, a, dt, "vfx", new String[]{"None", "Sparkles ✦", "Stars ★", "Hearts ❤", "Notes ♪", "Glitter •"}, c.vfx.ordinal(),
+            i -> { c.vfx = LyricsConfig.Vfx.values()[i]; restartPreview(); });
+        if (c.vfx != LyricsConfig.Vfx.NONE) {
+            y = slider(ctx, y, a, "Amount", "How many particles burst from each word", Math.round(c.vfxAmount * 100) + "%",
+                (c.vfxAmount - 0.25f) / 1.75f, f -> c.vfxAmount = Math.round((0.25f + (float) f * 1.75f) * 20f) / 20f);
+        }
+        return y;
+    }
+
+    /** A grid of selectable glass chips; returns the y below it. */
+    private int chips(DrawContext ctx, int y, float a, float dt, String key, String[] names, int selected, Consumer<Integer> set) {
+        int cols = 3, gap = 4, cw = (contentW - gap * (cols - 1)) / cols, ch = 18;
+        for (int i = 0; i < names.length; i++) {
+            int x = contentX + (i % cols) * (cw + gap);
+            int yy = y + (i / cols) * (ch + gap);
+            String id = key + "." + i;
+            boolean hov = hover(x, yy, cw, ch, true);
+            if (hov) hoveredId = id;
+            boolean sel = i == selected;
+            if (sel) Glass.tinted(ctx, x, yy, cw, ch, ch / 2, Themes.current().glow(), 0.55f, a);
+            else Glass.card(ctx, x, yy, cw, ch, ch / 2, anim(id, hov ? 1f : 0f, 14f, dt), a);
+            // words in the UI font, symbols (✦ ★ ❤ ♪) in Minecraft's font which has them
+            String nm = names[i];
+            int sp = nm.indexOf(' ');
+            Text label = sp < 0 ? Ui.t(nm) : Ui.t(nm.substring(0, sp + 1)).copy().append(Text.literal(nm.substring(sp + 1)));
+            Ui.textCentered(ctx, label, x + cw / 2, yy + 5, Ui.alpha(sel ? 0xFFFFFFFF : Ui.TEXT, a));
+            final int idx = i;
+            hits.add(new Hit(x, yy, cw, ch, id, () -> {
+                if (idx != selected) { set.accept(idx); Sounds.play(Sounds.CLICK, 0.95f + idx * 0.05f); LyricsConfig.save(); }
+            }, null, true));
+        }
+        return y + ((names.length + cols - 1) / cols) * (ch + gap) + 2;
+    }
+
+    /** A looping sample line drawn with the current colours and effects. */
+    private int livePreview(DrawContext ctx, int y, float a) {
+        int h = 44;
+        Glass.well(ctx, contentX, y, contentW, h, 12, a);
+        LyricsConfig c = LyricsConfig.get();
+        long now = System.currentTimeMillis();
+        int key = c.font * 31 + c.reveal.ordinal();
+        if (preview == null || now - previewStart > 3600 || key != previewKey) restartPreview();
+        previewKey = key;
+        long pos = 1000 + (now - previewStart);
+        float base = Math.min(1.8f, (contentW - 30) / Math.max(1f, preview.totalWidth));
+        ctx.enableScissor(contentX + 2, Math.max(contentY, y + 2), contentX + contentW - 2, Math.min(contentY + contentH, y + h - 2));
+        dev.markie.lyrics.render.Lyrics2D.draw(ctx, preview, pos, contentX + contentW / 2f, y + h / 2f, base, a);
+        ctx.disableScissor();
+        Ui.text(ctx, Ui.t("Preview"), contentX + 8, y + 4, Ui.alpha(0x99FFFFFF, a));
+        return y + h + 6;
+    }
+
+    private void restartPreview() {
+        previewStart = System.currentTimeMillis();
+        java.util.List<dev.markie.lyrics.lyrics.LyricLine.Word> words = java.util.List.of(
+            new dev.markie.lyrics.lyrics.LyricLine.Word("Feel", 1000), new dev.markie.lyrics.lyrics.LyricLine.Word("the", 1350),
+            new dev.markie.lyrics.lyrics.LyricLine.Word("music", 1650), new dev.markie.lyrics.lyrics.LyricLine.Word("glow", 2150));
+        preview = new LyricsAnimator.Shown(new dev.markie.lyrics.lyrics.LyricLine(1000, 4000, "Feel the music glow", words),
+            0, 0, LyricsConfig.Where.SCREEN, 7);
+    }
+
+    // ---------------------------------------------------------------- skies
+
+    private int skies(DrawContext ctx, int y, float a, float dt) {
+        LyricsConfig c = LyricsConfig.get();
+        y = toggle(ctx, y, a, dt, "Custom sky", "Replace the overworld sky with one of these", () -> c.skyEnabled, v -> c.skyEnabled = v);
+        int cols = 3, gap = 5, cw = (contentW - gap * (cols - 1)) / cols, ch = Math.round(cw * 0.56f) + 12;
+        for (int i = 0; i < SkyLibrary.ALL.length; i++) {
+            int x = contentX + (i % cols) * (cw + gap);
+            int yy = y + (i / cols) * (ch + gap);
+            String id = "sky." + i;
+            boolean hov = hover(x, yy, cw, ch, true);
+            if (hov) hoveredId = id;
+            float h = anim(id, hov ? 1f : 0f, 14f, dt);
+            boolean sel = c.sky == i && c.skyEnabled;
+            Identifier pv = Skybox.preview(i);
+            int iw = cw - 6, ih = ch - 18;
+            if (pv != null) {
+                ctx.drawTexture(RenderPipelines.GUI_TEXTURED, pv, x + 3, yy + 3, 0, 0, iw, ih, Skybox.PW, Skybox.PH, Skybox.PW, Skybox.PH,
+                    Ui.alpha(0xFFFFFFFF, a));
+            } else {
+                Glass.well(ctx, x + 3, yy + 3, iw, ih, 6, a);
+                Ui.textCentered(ctx, Ui.t("…"), x + cw / 2, yy + ih / 2, Ui.alpha(Ui.MUTED, a));
+            }
+            // glass frame on top of the picture
+            if (sel) Glass.tinted(ctx, x, yy, cw, ch, 9, Themes.current().glow(), 0.25f, a);
+            else Glass.card(ctx, x, yy, cw, ch, 9, 0.15f + h * 0.6f, a);
+            Ui.textCentered(ctx, Ui.t(SkyLibrary.ALL[i].name()), x + cw / 2, yy + ch - 12, Ui.alpha(sel ? 0xFFFFFFFF : Ui.TEXT, a));
+            final int idx = i;
+            hits.add(new Hit(x, yy, cw, ch, id, () -> {
+                c.sky = idx;
+                if (!c.skyEnabled) c.skyEnabled = true;
+                Sounds.play(Sounds.TOGGLE_ON, 0.9f + idx * 0.02f);
+                LyricsConfig.save();
+            }, null, true));
+        }
+        y += ((SkyLibrary.ALL.length + cols - 1) / cols) * (ch + gap) + 2;
+        y = section(ctx, "Sky settings", y, a);
+        y = slider(ctx, y, a, "Brightness", "How bright the sky is", Math.round(c.skyBrightness * 100) + "%",
+            (c.skyBrightness - 0.3f) / 1.2f, f -> c.skyBrightness = Math.round((0.3f + (float) f * 1.2f) * 20f) / 20f);
+        y = slider(ctx, y, a, "Rotation", "Slowly turns the sky around you", c.skySpin == 0 ? "Off" : String.format("%.1f°/s", c.skySpin),
+            c.skySpin / 3f, f -> c.skySpin = Math.round((float) f * 30f) / 10f);
+        y = toggle(ctx, y, a, dt, "Keep sun & moon", "Show the vanilla sun, moon and stars on top", () -> c.skySunMoon, v -> c.skySunMoon = v);
+        y = toggle(ctx, y, a, dt, "Hide clouds", "Vanilla clouds look odd in space skies", () -> c.skyHideClouds, v -> c.skyHideClouds = v);
+        y = toggle(ctx, y, a, dt, "Match fog", "Tint the horizon fog so the land blends into the sky", () -> c.skyFog, v -> c.skyFog = v);
+        y = paragraph(ctx, y, a, "Skies show in the Overworld. They're made by the mod itself, so they work on any server.");
         return y;
     }
 
@@ -548,7 +812,7 @@ public class LyricsScreen extends Screen {
     private void coverPlaceholder(DrawContext ctx, int x, int y, int s, float a) {
         Themes.Theme th = Themes.current();
         for (int i = 0; i < s; i++) {
-            int col = 0xFF000000 | dev.markie.lyrics.render.LyricsAnimator.lerpRgb(th.glow(), th.a(), i / (float) s);
+            int col = 0xFF000000 | LyricsAnimator.lerpRgb(th.glow(), th.a(), i / (float) s);
             int inset = i < 3 ? 3 - i : i > s - 4 ? i - (s - 4) : 0;
             ctx.fill(x + inset, y + i, x + s - inset, y + i + 1, Ui.alpha(col, a));
         }
@@ -828,6 +1092,7 @@ public class LyricsScreen extends Screen {
         }
         if (h.drag != null) {
             dragging = h;
+            dragY = my;
             h.drag.accept(mx);
             Sounds.play(Sounds.SLIDER);
             return true;
@@ -842,6 +1107,7 @@ public class LyricsScreen extends Screen {
             // mx is refreshed every frame in render(); use the latest mouse position transformed the same way
             float scale = 0.9f + 0.1f * easeOutBack(openAnim);
             double x = width / 2f + (click.x() - width / 2f) / scale;
+            dragY = height / 2f + (click.y() - height / 2f) / scale - (1f - openAnim) * 10f;
             dragging.drag.accept(x);
             long now = System.currentTimeMillis();
             if (now - lastSliderSound > 45) {

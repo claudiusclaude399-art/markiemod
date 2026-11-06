@@ -14,8 +14,15 @@ Client-side only, so it works on any server.
   horizon / your view, left-right spread, subtitle height for Screen mode, "stay in front of fog" and
   "shrink with distance"
 - **Follow view**, curved lines, show-through-blocks, timing offset
-- **10 colour themes** (gradient across each line) and **7 fonts** (Poppins, Montserrat, Fredoka,
-  Bebas Neue, Pacifico, Caveat, Minecraft), size, distance, glow, shadow
+- **Colours:** 10 themes, **Custom** (your own start / end / glow colours with a colour picker), **Rainbow**
+  (flowing hues, speed + spread), **Album** (colours taken from the song's cover), and opacity
+- **Effects:** 6 pop-in styles (Pop, Bounce, Zoom, Spin, Slide, Fade), flash echo, shimmer, wave, and
+  particle bursts on every word (Sparkles, Stars, Hearts, Notes, Glitter) with an amount slider.
+  The Colours and Effects tabs show a live preview
+- **Skies:** 12 custom skyboxes made by the mod (Galaxy, Aurora, Nebula, Sunset, Golden Hour, Cotton Candy,
+  Blood Moon, Ringed Planet, Hyperspace, Clear Day, Starry Night, Lavender Dusk) with brightness, slow
+  rotation, keep sun & moon, hide clouds, and fog that matches the sky
+- **7 fonts** (Poppins, Montserrat, Fredoka, Bebas Neue, Pacifico, Caveat, Minecraft), size, glow, shadow
 - **Now-playing HUD:** cover art, scrolling title, bouncing equaliser bars, progress line
 - **Liquid glass menu:** frosted see-through panels over the blurred world, glossy rims, a light that follows
   your mouse, and a liquid tab highlight / toggle knobs that stretch and wobble as they move
@@ -24,7 +31,7 @@ Client-side only, so it works on any server.
 - **Preview mode** with a built-in demo song, so you can try every look without Spotify
 
 ## Using it
-1. Put `markielyrics-1.2.0.jar` and Fabric API in your `mods` folder.
+1. Put `markielyrics-1.3.0.jar` and Fabric API in your `mods` folder.
 2. In game press **Right Shift** (or type `/lyrics`) to open the menu.
 3. Go to the **Spotify** tab and follow the 4 steps (one time only):
    - Open <https://developer.spotify.com/dashboard>, click **Create app**, tick **Web API**

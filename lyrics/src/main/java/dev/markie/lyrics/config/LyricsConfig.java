@@ -13,6 +13,9 @@ import java.nio.file.Path;
 public class LyricsConfig {
     public enum Where { SKY, FLOATING, SCREEN }
     public enum Reveal { WORD, LINE }
+    public enum ColorMode { THEME, CUSTOM, RAINBOW, ALBUM }
+    public enum PopStyle { POP, BOUNCE, ZOOM, SPIN, SLIDE, FADE }
+    public enum Vfx { NONE, SPARKLES, STARS, HEARTS, NOTES, GLITTER }
 
     // Spotify
     public String clientId = "";
@@ -45,6 +48,32 @@ public class LyricsConfig {
     public boolean scaleWithDistance = false; // true: farther = smaller on screen
     public boolean glow = true;
     public boolean shadow = false;
+
+    // Colours
+    public ColorMode colorMode = ColorMode.THEME;
+    public int customA = 0xFFB3E6;
+    public int customB = 0x9AD0FF;
+    public int customGlow = 0xB05CC8;
+    public float rainbowSpeed = 0.5f; // 0 .. 2
+    public float rainbowSpread = 0.5f;// 0 .. 1
+    public float opacity = 1f;        // 0.2 .. 1
+
+    // Effects
+    public PopStyle popStyle = PopStyle.POP;
+    public Vfx vfx = Vfx.SPARKLES;
+    public float vfxAmount = 1f;      // 0.25 .. 2
+    public boolean wave = false;
+    public boolean shimmer = true;
+    public boolean echo = true;
+
+    // Sky
+    public boolean skyEnabled = false;
+    public int sky = 0;
+    public float skyBrightness = 1f;  // 0.3 .. 1.5
+    public float skySpin = 0.2f;      // degrees per second, 0 .. 3
+    public boolean skySunMoon = false;
+    public boolean skyFog = true;
+    public boolean skyHideClouds = true;
 
     // HUD
     public boolean hud = true;
@@ -94,6 +123,16 @@ public class LyricsConfig {
         if (refreshToken == null) refreshToken = "";
         if (accessToken == null) accessToken = "";
         if (where == null) where = Where.SKY;
+        if (colorMode == null) colorMode = ColorMode.THEME;
+        if (popStyle == null) popStyle = PopStyle.POP;
+        if (vfx == null) vfx = Vfx.SPARKLES;
+        rainbowSpeed = clamp(rainbowSpeed, 0f, 2f);
+        rainbowSpread = clamp(rainbowSpread, 0f, 1f);
+        opacity = clamp(opacity, 0.2f, 1f);
+        vfxAmount = clamp(vfxAmount, 0.25f, 2f);
+        skyBrightness = clamp(skyBrightness, 0.3f, 1.5f);
+        skySpin = clamp(skySpin, 0f, 3f);
+        if (sky < 0 || sky >= dev.markie.lyrics.sky.SkyLibrary.ALL.length) sky = 0;
         if (reveal == null) reveal = Reveal.WORD;
         size = clamp(size, 0.5f, 2f);
         skyDistance = clamp(skyDistance, 16f, 128f);

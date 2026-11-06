@@ -69,7 +69,7 @@ public final class HudRenderer {
         } else {
             // little spinning record
             Glass.solid(ctx, cx, cy, 12, 12, 6, Ui.alpha(0xFF2A2230, a));
-            Glass.solid(ctx, cx + 3, cy + 3, 6, 6, 3, Ui.alpha(Themes.current().a() | 0xFF000000, a));
+            Glass.solid(ctx, cx + 3, cy + 3, 6, 6, 3, Ui.alpha(Colors.colorA() | 0xFF000000, a));
             double ang = np.playing() ? System.currentTimeMillis() / 400.0 : 0;
             int dx = (int) Math.round(Math.cos(ang) * 4), dy = (int) Math.round(Math.sin(ang) * 4);
             ctx.fill(cx + 6 + dx, cy + 6 + dy, cx + 7 + dx, cy + 7 + dy, Ui.alpha(0x66FFFFFF, a));
@@ -97,7 +97,7 @@ public final class HudRenderer {
         // equaliser bars
         if (cfg.hudBars) {
             int bx = x + w - 22;
-            int themeCol = Themes.current().a() | 0xFF000000;
+            int themeCol = Colors.colorA() | 0xFF000000;
             double time = System.currentTimeMillis() / 1000.0;
             for (int i = 0; i < 4; i++) {
                 float v = np.playing()
@@ -113,7 +113,7 @@ public final class HudRenderer {
             float prog = np.positionNow() / (float) np.durationMs();
             int px = x + 9, pw = w - 18;
             Glass.solid(ctx, px, y + h - 3, pw, 1, 1, Ui.alpha(0x26FFFFFF, a));
-            Glass.solid(ctx, px, y + h - 3, Math.max(1, Math.round(pw * prog)), 1, 1, Ui.alpha(Themes.current().a() | 0xFF000000, a));
+            Glass.solid(ctx, px, y + h - 3, Math.max(1, Math.round(pw * prog)), 1, 1, Ui.alpha(Colors.colorA() | 0xFF000000, a));
         }
     }
 
@@ -128,45 +128,10 @@ public final class HudRenderer {
     }
 
     private static void drawSubLine(DrawContext ctx, MinecraftClient mc, LyricsAnimator.Shown s, long pos, LyricsConfig cfg) {
-        float lineAlpha = s.lineAlpha();
-        if (lineAlpha <= 0.02f) return;
-        TextRenderer tr = mc.textRenderer;
-        float leave = LyricsAnimator.easeOutCubic(s.leaveProgress());
         float base = 2.0f * cfg.size;
         int sw = ctx.getScaledWindowWidth(), sh = ctx.getScaledWindowHeight();
         float maxW = sw * 0.9f;
         if (s.totalWidth * base > maxW) base = maxW / s.totalWidth;
-        float cy = sh * cfg.screenY - leave * 14f;
-
-        Matrix3x2fStack m = ctx.getMatrices();
-        int n = s.wordText.length;
-        float x = -s.totalWidth / 2f;
-        for (int i = 0; i < n; i++) {
-            float w = s.wordWidth[i];
-            float cx = x + w / 2f;
-            x += w + s.spaceWidth;
-            float p = s.wordProgress(i, pos);
-            if (p <= 0f) continue;
-            float alpha = LyricsAnimator.easeOutCubic(p) * lineAlpha;
-            if (alpha < 0.03f) continue;
-            float pop = 0.55f + 0.45f * LyricsAnimator.easeOutBack(p);
-            float rise = (1f - LyricsAnimator.easeOutCubic(p)) * 6f;
-
-            m.pushMatrix();
-            m.translate(sw / 2f + cx * base, cy + rise * base / 2f);
-            m.scale(base * pop, base * pop);
-            int tx = Math.round(-w / 2f), ty = -4;
-            if (cfg.glow) {
-                int gc = LyricsAnimator.glowColor(alpha * 0.3f);
-                if ((gc >>> 24) >= 4) {
-                    ctx.drawText(tr, s.wordText[i], tx + 1, ty, gc, false);
-                    ctx.drawText(tr, s.wordText[i], tx - 1, ty, gc, false);
-                    ctx.drawText(tr, s.wordText[i], tx, ty + 1, gc, false);
-                    ctx.drawText(tr, s.wordText[i], tx, ty - 1, gc, false);
-                }
-            }
-            ctx.drawText(tr, s.wordText[i], tx, ty, LyricsAnimator.wordColor(i, n, alpha), cfg.shadow);
-            m.popMatrix();
-        }
+        Lyrics2D.draw(ctx, s, pos, sw / 2f, sh * cfg.screenY, base, 1f);
     }
 }

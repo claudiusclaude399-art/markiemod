@@ -18,6 +18,9 @@ import org.joml.Quaternionf;
 public final class SkyLyricsRenderer {
     private static final float RAD = (float) (Math.PI / 180.0);
 
+    private static final WordFx.Pose POSE = new WordFx.Pose();
+    private static final WordFx.Spark[] SPARKS = WordFx.newSparkBuffer();
+
     private SkyLyricsRenderer() {}
 
     public static void render(WorldRenderContext ctx) {
@@ -90,29 +93,62 @@ public final class SkyLyricsRenderer {
         int n = s.wordText.length;
         float radius = s.totalWidth * 1.25f + 70f;
         float x = -s.totalWidth / 2f;
+        long seed = s.line.startMs();
         for (int i = 0; i < n; i++) {
             float w = s.wordWidth[i];
             float cx = x + w / 2f;
             x += w + s.spaceWidth;
             float p = s.wordProgress(i, pos);
             if (p <= 0f) continue;
-            float alpha = LyricsAnimator.easeOutCubic(p) * lineAlpha;
+            long since = s.wordSince(i, pos);
+            WordFx.pose(cfg, p, since, i, POSE);
+            float alpha = POSE.alpha * lineAlpha * cfg.opacity;
             if (alpha < 0.03f) continue;
-            float pop = 0.55f + 0.45f * LyricsAnimator.easeOutBack(p);
-            float rise = (1f - LyricsAnimator.easeOutCubic(p)) * 7f;
+            float xFrac = s.totalWidth <= 0 ? 0 : (cx + s.totalWidth / 2f) / s.totalWidth;
 
             ms.push();
             if (cfg.curved) {
                 float theta = cx / radius;
-                ms.translate(radius * (float) Math.sin(theta), radius * (1f - (float) Math.cos(theta)) + rise, 0);
+                ms.translate(radius * (float) Math.sin(theta) + POSE.dx, radius * (1f - (float) Math.cos(theta)) + POSE.dy, 0);
                 ms.multiply(RotationAxis.POSITIVE_Z.rotation(theta));
             } else {
-                ms.translate(cx, rise, 0);
+                ms.translate(cx + POSE.dx, POSE.dy, 0);
             }
-            float sc = pop * (1f + leave * 0.15f);
+
+            // particle burst (drawn before the word so the word sits on top)
+            int sparks = WordFx.sparks(cfg, seed, i, since, w, SPARKS);
+            for (int k = 0; k < sparks; k++) {
+                WordFx.Spark sp = SPARKS[k];
+                int col = LyricsAnimator.argb(sp.alpha * lineAlpha * cfg.opacity, sp.rgb);
+                if ((col >>> 24) < 6) continue;
+                net.minecraft.text.Text g = WordFx.glyph(cfg, seed, i, k);
+                ms.push();
+                ms.translate(sp.x, sp.y, 0);
+                ms.multiply(RotationAxis.POSITIVE_Z.rotation(sp.rot));
+                ms.scale(sp.scale, sp.scale, sp.scale);
+                tr.draw(g, -tr.getWidth(g) / 2f, -4f, col, false, ms.peek().getPositionMatrix(), consumers, layer, 0, light);
+                ms.pop();
+            }
+
+            if (POSE.rot != 0) ms.multiply(RotationAxis.POSITIVE_Z.rotation(POSE.rot));
+            float sc = POSE.scale * (1f + leave * 0.15f);
+            float tx = -w / 2f, ty = -4.5f;
+
+            // echo: a bigger, fading copy that flashes out from the word as it lands
+            if (cfg.echo && since >= 0 && since < 450) {
+                float e = since / 450f;
+                int ec = LyricsAnimator.argb((1f - e) * 0.45f * lineAlpha * cfg.opacity, Colors.glow());
+                if ((ec >>> 24) >= 6) {
+                    ms.push();
+                    float es = sc * (1f + LyricsAnimator.easeOutCubic(e) * 0.7f);
+                    ms.scale(es, es, es);
+                    tr.draw(s.wordText[i], tx, ty, ec, false, ms.peek().getPositionMatrix(), consumers, layer, 0, light);
+                    ms.pop();
+                }
+            }
+
             ms.scale(sc, sc, sc);
             Matrix4f m = ms.peek().getPositionMatrix();
-            float tx = -w / 2f, ty = -4.5f;
             if (cfg.glow) {
                 int gc = LyricsAnimator.glowColor(alpha * 0.28f);
                 if ((gc >>> 24) >= 4) {
@@ -122,7 +158,7 @@ public final class SkyLyricsRenderer {
                     }
                 }
             }
-            tr.draw(s.wordText[i], tx, ty, LyricsAnimator.wordColor(i, n, alpha), cfg.shadow, m, consumers, layer, 0, light);
+            tr.draw(s.wordText[i], tx, ty, LyricsAnimator.argb(alpha, Colors.word(i, n, xFrac)), cfg.shadow, m, consumers, layer, 0, light);
             ms.pop();
         }
         ms.pop();

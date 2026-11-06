@@ -3,7 +3,6 @@ package dev.markie.lyrics.render;
 import dev.markie.lyrics.Sounds;
 import dev.markie.lyrics.config.LyricsConfig;
 import dev.markie.lyrics.gui.Fonts;
-import dev.markie.lyrics.gui.Themes;
 import dev.markie.lyrics.lyrics.LyricLine;
 import dev.markie.lyrics.lyrics.LyricsManager;
 import dev.markie.lyrics.spotify.SpotifyClient;
@@ -35,7 +34,7 @@ public final class LyricsAnimator {
         public final float[] wordWidth;
         public final float spaceWidth, totalWidth;
 
-        Shown(LyricLine line, float camYaw, float camPitch, LyricsConfig.Where where, long seed) {
+        public Shown(LyricLine line, float camYaw, float camPitch, LyricsConfig.Where where, long seed) {
             this.line = line;
             this.appearReal = System.currentTimeMillis();
             this.baseYaw = camYaw;
@@ -75,6 +74,14 @@ public final class LyricsAnimator {
                 : line.startMs() + i * 45L;
             float p = (songPos - t0) / (float) WORD_IN_MS;
             return clamp01(p);
+        }
+
+        /** Milliseconds since word i started appearing (negative = not yet). */
+        public long wordSince(int i, long songPos) {
+            long t0 = LyricsConfig.get().reveal == LyricsConfig.Reveal.WORD
+                ? line.words().get(i).startMs()
+                : line.startMs() + i * 45L;
+            return songPos - t0;
         }
 
         /** 0..1 overall line opacity (fade in, fade out). */
@@ -146,13 +153,11 @@ public final class LyricsAnimator {
 
     /** Colour for word i of n with alpha applied (ARGB). */
     public static int wordColor(int i, int n, float alpha) {
-        Themes.Theme t = Themes.current();
-        float f = n <= 1 ? 0f : i / (float) (n - 1);
-        return argb(alpha, lerpRgb(t.a(), t.b(), f));
+        return argb(alpha, Colors.word(i, n, n <= 1 ? 0f : i / (float) (n - 1)));
     }
 
     public static int glowColor(float alpha) {
-        return argb(alpha, Themes.current().glow());
+        return argb(alpha, Colors.glow());
     }
 
     public static int argb(float alpha, int rgb) {
