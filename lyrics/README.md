@@ -14,12 +14,14 @@ Client-side only, so it works on any server.
 - **10 colour themes** (gradient across each line) and **7 fonts** (Poppins, Montserrat, Fredoka,
   Bebas Neue, Pacifico, Caveat, Minecraft), size, distance, glow, shadow
 - **Now-playing HUD:** cover art, scrolling title, bouncing equaliser bars, progress line
-- **Animated menu** with its own sounds (hover ticks, clicks, toggle chimes, open/close swooshes)
+- **Liquid glass menu:** frosted see-through panels over the blurred world, glossy rims, a light that follows
+  your mouse, and a liquid tab highlight / toggle knobs that stretch and wobble as they move
+- Its own sounds (hover ticks, clicks, toggle chimes, open/close swooshes)
 - Play / pause / skip from the menu (Spotify Premium needed for those)
 - **Preview mode** with a built-in demo song, so you can try every look without Spotify
 
 ## Using it
-1. Put `markielyrics-1.0.0.jar` and Fabric API in your `mods` folder.
+1. Put `markielyrics-1.1.0.jar` and Fabric API in your `mods` folder.
 2. In game press **Right Shift** (or type `/lyrics`) to open the menu.
 3. Go to the **Spotify** tab and follow the 4 steps (one time only):
    - Open <https://developer.spotify.com/dashboard>, click **Create app**, tick **Web API**

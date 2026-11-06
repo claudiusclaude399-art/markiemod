@@ -1,6 +1,7 @@
 package dev.markie.lyrics.render;
 
 import dev.markie.lyrics.config.LyricsConfig;
+import dev.markie.lyrics.gui.Glass;
 import dev.markie.lyrics.gui.LyricsScreen;
 import dev.markie.lyrics.gui.Themes;
 import dev.markie.lyrics.gui.Ui;
@@ -54,8 +55,11 @@ public final class HudRenderer {
         int y = Math.round(cfg.hudY - (1f - ease) * 24f);
         float a = pillAnim;
 
-        Ui.round(ctx, x, y, w, h, 9, Ui.alpha(0xE0120F18, a));
-        Ui.round(ctx, x + 1, y + 1, w - 2, 1, 0, Ui.alpha(0x14FFFFFF, a));
+        // liquid glass pill (no blur in-game, so a darker base keeps it readable over bright skies)
+        Glass.shadow(ctx, x, y, w, h, 9, a * 0.8f);
+        Glass.solid(ctx, x, y, w, h, 9, Glass.argb(0.62f * a, 0x0C0A14));
+        Glass.solid(ctx, x, y, w, h, 9, Glass.argb(0.12f * a, Themes.current().glow()));
+        Glass.card(ctx, x, y, w, h, 9, 0.6f, a);
 
         // cover, spinning-record style ring while there's no cover yet
         Identifier cover = CoverArt.texture();
@@ -64,8 +68,8 @@ public final class HudRenderer {
             ctx.drawTexture(RenderPipelines.GUI_TEXTURED, cover, cx, cy, 0, 0, 12, 12, 12, 12, 12, 12);
         } else {
             // little spinning record
-            Ui.round(ctx, cx, cy, 12, 12, 6, Ui.alpha(0xFF2A2230, a));
-            Ui.round(ctx, cx + 3, cy + 3, 6, 6, 3, Ui.alpha(Themes.current().a() | 0xFF000000, a));
+            Glass.solid(ctx, cx, cy, 12, 12, 6, Ui.alpha(0xFF2A2230, a));
+            Glass.solid(ctx, cx + 3, cy + 3, 6, 6, 3, Ui.alpha(Themes.current().a() | 0xFF000000, a));
             double ang = np.playing() ? System.currentTimeMillis() / 400.0 : 0;
             int dx = (int) Math.round(Math.cos(ang) * 4), dy = (int) Math.round(Math.sin(ang) * 4);
             ctx.fill(cx + 6 + dx, cy + 6 + dy, cx + 7 + dx, cy + 7 + dy, Ui.alpha(0x66FFFFFF, a));
@@ -108,8 +112,8 @@ public final class HudRenderer {
         if (cfg.hudProgress && np.durationMs() > 0) {
             float prog = np.positionNow() / (float) np.durationMs();
             int px = x + 9, pw = w - 18;
-            ctx.fill(px, y + h - 2, px + pw, y + h - 1, Ui.alpha(0x22FFFFFF, a));
-            ctx.fill(px, y + h - 2, px + Math.round(pw * prog), y + h - 1, Ui.alpha(Themes.current().a() | 0xFF000000, a));
+            Glass.solid(ctx, px, y + h - 3, pw, 1, 1, Ui.alpha(0x26FFFFFF, a));
+            Glass.solid(ctx, px, y + h - 3, Math.max(1, Math.round(pw * prog)), 1, 1, Ui.alpha(Themes.current().a() | 0xFF000000, a));
         }
     }
 

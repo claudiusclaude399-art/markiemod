@@ -19,8 +19,8 @@ public final class Ui {
     public static final int CARD = 0xFF221D2B;
     public static final int CARD_HOVER = 0xFF2B2537;
     public static final int STROKE = 0x30FFFFFF;
-    public static final int TEXT = 0xFFECE8F4;
-    public static final int MUTED = 0xFF8C8499;
+    public static final int TEXT = 0xFFF7F5FB;
+    public static final int MUTED = 0xFFB9B2C8;
     public static final int ACCENT = 0xFF8B5CF6;
     public static final int ACCENT_SOFT = 0xFF6D44D1;
     public static final int GREEN = 0xFF4ADE80;

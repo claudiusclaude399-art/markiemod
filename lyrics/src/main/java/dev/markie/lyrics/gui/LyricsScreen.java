@@ -51,6 +51,8 @@ public class LyricsScreen extends Screen {
     private Tab tab = lastTab;
     private final List<Hit> hits = new ArrayList<>();
     private final Map<String, Float> anim = new HashMap<>();
+    private final Map<String, float[]> springs = new HashMap<>();
+    private int mainX, mainW;
     private String hoveredId, lastHoveredId;
     private Hit dragging;
     private long lastSliderSound;
@@ -83,7 +85,7 @@ public class LyricsScreen extends Screen {
         clientIdField = new TextFieldWidget(textRenderer, 0, 0, 160, 16, Text.literal("Client ID"));
         clientIdField.setMaxLength(64);
         clientIdField.setText(LyricsConfig.get().clientId);
-        clientIdField.setPlaceholder(Text.literal("paste your Client ID here").withColor(0xFF6E667A));
+        clientIdField.setPlaceholder(Text.literal("paste your Client ID here").withColor(0xFF9890A6));
         clientIdField.setChangedListener(s -> {
             LyricsConfig.get().clientId = s.trim();
             LyricsConfig.save();
@@ -123,14 +125,16 @@ public class LyricsScreen extends Screen {
         tabFade = Ui.approach(tabFade, 1f, 12f, dt);
         scroll = Ui.approach(scroll, scrollTarget, 18f, dt);
 
-        pw = Math.min(420, width - 24);
-        ph = Math.min(260, height - 24);
+        pw = Math.min(430, width - 24);
+        ph = Math.min(264, height - 24);
         px = (width - pw) / 2;
         py = (height - ph) / 2;
-        sideW = 106;
-        contentX = px + sideW + 12;
+        sideW = 112;
+        mainX = px + sideW + 6;
+        mainW = pw - sideW - 6;
+        contentX = mainX + 10;
         contentY = py + 44;
-        contentW = pw - sideW - 24;
+        contentW = mainW - 22;
         contentH = ph - 44 - 8;
 
         float ease = easeOutBack(openAnim);
@@ -149,9 +153,15 @@ public class LyricsScreen extends Screen {
         m.scale(scale, scale);
         m.translate(-cxp, -cyp);
 
-        // glow behind the panel
-        Ui.round(ctx, px - 3, py - 3, pw + 6, ph + 6, 12, Ui.alpha(0x308B5CF6, alpha));
-        Ui.roundOutlined(ctx, px, py, pw, ph, 9, Ui.alpha(Ui.BG, alpha), Ui.alpha(0x40FFFFFF, alpha));
+        // two floating sheets of glass
+        int tint = Themes.current().glow();
+        Glass.panel(ctx, px, py, sideW, ph, 14, tint, alpha);
+        Glass.panel(ctx, mainX, py, mainW, ph, 14, tint, alpha);
+        // specular light that follows the mouse across the glass
+        ctx.enableScissor(px + 2, py + 2, px + pw - 2, py + ph - 2);
+        Glass.sheen(ctx, (int) mx, (int) my, 240, Glass.argb(0.07f * alpha, 0xFFFFFF));
+        Glass.sheen(ctx, px + pw / 4, py - 30, 320, Glass.argb(0.05f * alpha, 0xFFFFFF));
+        ctx.disableScissor();
         drawSidebar(ctx, alpha, dt);
         drawHeader(ctx, alpha);
 
@@ -174,7 +184,7 @@ public class LyricsScreen extends Screen {
             // scroll bar
             int barH = Math.max(16, Math.round(contentH * contentH / (float) (contentH + maxScroll)));
             int barY = contentY + Math.round((contentH - barH) * (scroll / maxScroll));
-            Ui.round(ctx, px + pw - 6, barY, 3, barH, 1, Ui.alpha(0x40FFFFFF, alpha));
+            Glass.solid(ctx, mainX + mainW - 6, barY, 3, barH, 1, Ui.alpha(0x50FFFFFF, alpha));
         }
         m.popMatrix();
 
@@ -190,39 +200,38 @@ public class LyricsScreen extends Screen {
     }
 
     private void drawSidebar(DrawContext ctx, float alpha, float dt) {
-        Ui.round(ctx, px + 1, py + 1, sideW, ph - 2, 8, Ui.alpha(Ui.SIDEBAR, alpha));
-        ctx.fill(px + sideW, py + 8, px + sideW + 1, py + ph - 8, Ui.alpha(0x18FFFFFF, alpha));
-
-        // logo
+        // logo: a little glass drop with a note in it
         int lx = px + 9, ly = py + 10;
-        Ui.round(ctx, lx, ly, 18, 18, 5, Ui.alpha(Ui.ACCENT, alpha));
-        Ui.round(ctx, lx + 2, ly + 2, 14, 7, 3, Ui.alpha(0x30FFFFFF, alpha));
-        ctx.drawText(textRenderer, Text.literal("♫"), lx + 5, ly + 5, Ui.alpha(0xFFFFFFFF, alpha), false);
-        Ui.text(ctx, Ui.big("Markie"), lx + 23, ly + 1, Ui.alpha(Ui.TEXT, alpha));
-        Ui.text(ctx, Ui.t("lyrics in the sky"), lx + 23, ly + 12, Ui.alpha(Ui.MUTED, alpha));
+        Glass.tinted(ctx, lx, ly, 20, 20, 7, Themes.current().a(), 0.75f, alpha);
+        ctx.drawText(textRenderer, Text.literal("♫"), lx + 6, ly + 6, Ui.alpha(0xFFFFFFFF, alpha), false);
+        Ui.text(ctx, Ui.big("Markie"), lx + 25, ly + 1, Ui.alpha(Ui.TEXT, alpha));
+        Ui.text(ctx, Ui.t("lyrics in the sky"), lx + 25, ly + 12, Ui.alpha(Ui.MUTED, alpha));
 
-        int ty = py + 40;
-        Tab[] tabs = Tab.values();
-        float target = ty + tab.ordinal() * 19;
-        if (tabHighlightY < 0) tabHighlightY = target;
-        tabHighlightY = Ui.approach(tabHighlightY, target, 16f, dt);
-        Ui.round(ctx, px + 6, Math.round(tabHighlightY), sideW - 11, 17, 5, Ui.alpha(Ui.ACCENT_SOFT, alpha));
-        ctx.fill(px + 3, Math.round(tabHighlightY) + 4, px + 4, Math.round(tabHighlightY) + 13, Ui.alpha(0xFFC4A4FF, alpha));
-        for (Tab t : tabs) {
-            int y = ty + t.ordinal() * 19;
+        int ty = py + 42, rowH = 19, tabW = sideW - 12, tabX = px + 6;
+        // liquid lens: springs to the selected tab and stretches while it travels
+        float[] sp = spring("tablens", ty + tab.ordinal() * rowH, dt);
+        float stretch = Math.min(0.6f, Math.abs(sp[1]) / 420f);
+        int lensH = Math.round(17 * (1 + stretch));
+        int lensW = Math.round(tabW * (1 - stretch * 0.18f));
+        int lensY = Math.round(sp[0] + 8.5f - lensH / 2f);
+        int lensX = tabX + (tabW - lensW) / 2;
+        Glass.tinted(ctx, lensX, lensY, lensW, lensH, lensH / 2, Themes.current().glow(), 0.55f, alpha);
+
+        for (Tab t : Tab.values()) {
+            int y = ty + t.ordinal() * rowH;
             String id = "tab." + t.name();
-            boolean hov = hover(px + 6, y, sideW - 11, 17, false);
+            boolean hov = hover(tabX, y, tabW, 17, false);
             if (hov) hoveredId = id;
             float h = anim(id, hov && t != tab ? 1f : 0f, 14f, dt);
-            if (h > 0.01f) Ui.round(ctx, px + 6, y, sideW - 11, 17, 5, Ui.alpha(0x14FFFFFF, alpha * h));
+            if (h > 0.01f) Glass.card(ctx, tabX, y, tabW, 17, 8, h * 0.5f, alpha * h);
             int col = t == tab ? 0xFFFFFFFF : Ui.mix(Ui.MUTED, Ui.TEXT, h);
-            ctx.drawText(textRenderer, Text.literal(t.icon), px + 12 + Math.round(h * 1.5f), y + 5, Ui.alpha(col, alpha), false);
-            Ui.text(ctx, Ui.t(t.title), px + 25 + Math.round(h * 1.5f), y + 4, Ui.alpha(col, alpha));
-            hits.add(new Hit(px + 6, y, sideW - 11, 17, id, () -> switchTab(t), null, false));
+            ctx.drawText(textRenderer, Text.literal(t.icon), tabX + 7 + Math.round(h * 1.5f), y + 5, Ui.alpha(col, alpha), false);
+            Ui.text(ctx, Ui.t(t.title), tabX + 20 + Math.round(h * 1.5f), y + 4, Ui.alpha(col, alpha));
+            hits.add(new Hit(tabX, y, tabW, 17, id, () -> switchTab(t), null, false));
         }
 
-        Ui.text(ctx, Ui.t("Markie Lyrics"), px + 10, py + ph - 22, Ui.alpha(Ui.MUTED, alpha));
-        Ui.text(ctx, Ui.t("v1.0 · Right Shift"), px + 10, py + ph - 13, Ui.alpha(0xFF5E5868, alpha));
+        Ui.text(ctx, Ui.t("Markie Lyrics"), px + 11, py + ph - 23, Ui.alpha(Ui.MUTED, alpha));
+        Ui.text(ctx, Ui.t("v1.1 · Right Shift"), px + 11, py + ph - 14, Ui.alpha(0xFF8E879C, alpha));
     }
 
     private void drawHeader(DrawContext ctx, float alpha) {
@@ -232,18 +241,19 @@ public class LyricsScreen extends Screen {
 
         // connection chip
         boolean connected = SpotifyAuth.isLoggedIn();
-        String label = connected ? "Spotify connected" : "Not connected";
-        Text t = Ui.t(label);
-        int w = textRenderer.getWidth(t) + 16;
-        int x = px + pw - w - 10;
-        Ui.round(ctx, x, hy + 2, w, 14, 7, Ui.alpha(connected ? 0x2A4ADE80 : 0x22FFFFFF, alpha));
-        float pulse = connected ? 0.6f + 0.4f * (float) Math.sin(System.currentTimeMillis() / 300.0) : 1f;
-        Ui.round(ctx, x + 5, hy + 7, 4, 4, 2, Ui.alpha(connected ? Ui.GREEN : 0xFF8C8499, alpha * pulse));
-        Ui.text(ctx, t, x + 12, hy + 5, Ui.alpha(connected ? 0xFFB9F5CF : Ui.MUTED, alpha));
+        Text t = Ui.t(connected ? "Spotify connected" : "Not connected");
+        int w = textRenderer.getWidth(t) + 18;
+        int x = mainX + mainW - w - 10;
         String id = "chip";
-        if (hover(x, hy + 2, w, 14, false)) hoveredId = id;
-        hits.add(new Hit(x, hy + 2, w, 14, id, () -> switchTab(Tab.SPOTIFY), null, false));
-        ctx.fill(contentX, py + 38, px + pw - 12, py + 39, Ui.alpha(0x14FFFFFF, alpha));
+        boolean hov = hover(x, hy + 1, w, 15, false);
+        if (hov) hoveredId = id;
+        if (connected) Glass.tinted(ctx, x, hy + 1, w, 15, 7, 0x4ADE80, hov ? 0.4f : 0.28f, alpha);
+        else Glass.card(ctx, x, hy + 1, w, 15, 7, hov ? 1f : 0.3f, alpha);
+        float pulse = connected ? 0.6f + 0.4f * (float) Math.sin(System.currentTimeMillis() / 300.0) : 1f;
+        Glass.solid(ctx, x + 6, hy + 6, 5, 5, 2, Ui.alpha(connected ? Ui.GREEN : 0xFFB4ADC2, alpha * pulse));
+        Ui.text(ctx, t, x + 14, hy + 5, Ui.alpha(connected ? 0xFFD9FBE6 : Ui.TEXT, alpha));
+        hits.add(new Hit(x, hy + 1, w, 15, id, () -> switchTab(Tab.SPOTIFY), null, false));
+        ctx.fill(contentX, py + 38, mainX + mainW - 10, py + 39, Ui.alpha(0x22FFFFFF, alpha));
     }
 
     private void switchTab(Tab t) {
@@ -307,8 +317,8 @@ public class LyricsScreen extends Screen {
             if (hov) hoveredId = id;
             float h = anim(id, hov ? 1f : 0f, 14f, dt);
             boolean sel = c.theme == i;
-            Ui.roundOutlined(ctx, x, yy, cw, chh, 5, Ui.alpha(Ui.mix(Ui.CARD, Ui.CARD_HOVER, h), a),
-                Ui.alpha(sel ? Ui.ACCENT : Ui.STROKE, a));
+            if (sel) Glass.tinted(ctx, x, yy, cw, chh, 9, th.glow(), 0.45f, a);
+            else Glass.card(ctx, x, yy, cw, chh, 9, h, a);
             // name drawn letter by letter in the theme's gradient
             Text name = Ui.in(th.name(), Fonts.UI);
             int tw = textRenderer.getWidth(name);
@@ -342,8 +352,8 @@ public class LyricsScreen extends Screen {
             if (hov) hoveredId = id;
             float h = anim(id, hov ? 1f : 0f, 14f, dt);
             boolean sel = c.font == i;
-            int fill = sel ? Ui.ACCENT_SOFT : Ui.mix(Ui.CARD, Ui.CARD_HOVER, h);
-            Ui.roundOutlined(ctx, x, yy, cw, chh, 5, Ui.alpha(fill, a), Ui.alpha(sel ? 0xFFA884FF : Ui.STROKE, a));
+            if (sel) Glass.tinted(ctx, x, yy, cw, chh, 10, Themes.current().glow(), 0.5f, a);
+            else Glass.card(ctx, x, yy, cw, chh, 10, h, a);
             Text name = Ui.in(f.name(), f.source());
             Ui.textCentered(ctx, name, x + cw / 2, yy + (chh - 9) / 2, Ui.alpha(sel ? 0xFFFFFFFF : Ui.TEXT, a));
             final int idx = i;
@@ -379,9 +389,9 @@ public class LyricsScreen extends Screen {
 
         // status card
         int ch = 30;
-        Ui.roundOutlined(ctx, contentX, y, contentW, ch, 6, Ui.alpha(Ui.CARD, a), Ui.alpha(Ui.STROKE, a));
+        Glass.card(ctx, contentX, y, contentW, ch, 10, 0.2f, a);
         int dot = connected ? Ui.GREEN : SpotifyAuth.state == SpotifyAuth.State.FAILED ? 0xFFFF6B6B : 0xFFE8C66A;
-        Ui.round(ctx, contentX + 8, y + 8, 6, 6, 3, Ui.alpha(dot, a));
+        Glass.solid(ctx, contentX + 8, y + 8, 6, 6, 3, Ui.alpha(dot, a));
         Ui.text(ctx, Ui.t(connected ? "Connected" : "Not connected"), contentX + 19, y + 6, Ui.alpha(Ui.TEXT, a));
         String sub = SpotifyAuth.message.isEmpty() ? (connected ? SpotifyClient.status() : "Follow the steps below") : SpotifyAuth.message;
         if (connected && SpotifyAuth.state != SpotifyAuth.State.FAILED) sub = SpotifyClient.status();
@@ -404,7 +414,8 @@ public class LyricsScreen extends Screen {
         clientIdField.setY(fy + 5);
         clientIdField.setWidth(contentW - 12);
         boolean focused = clientIdField.isFocused();
-        Ui.roundOutlined(ctx, contentX, fy, contentW, 18, 5, Ui.alpha(0xFF15121B, a), Ui.alpha(focused ? Ui.ACCENT : Ui.STROKE, a));
+        Glass.well(ctx, contentX, fy, contentW, 18, 9, a);
+        if (focused) Glass.tinted(ctx, contentX, fy, contentW, 18, 9, Themes.current().glow(), 0.15f, a);
         y += 23;
 
         y = section(ctx, "How to connect (one time)", y, a);
@@ -447,7 +458,7 @@ public class LyricsScreen extends Screen {
         NowPlaying np = SpotifyClient.current();
         int h = 44;
         int x = contentX, w = contentW;
-        Ui.roundOutlined(ctx, x, y, w, h, 7, Ui.alpha(Ui.CARD, a), Ui.alpha(Ui.STROKE, a));
+        Glass.card(ctx, x, y, w, h, 12, 0.25f, a);
         if (np == null) {
             coverPlaceholder(ctx, x + 6, y + 6, 32, a * 0.5f);
             Ui.text(ctx, Ui.t(SpotifyAuth.isLoggedIn() ? "Nothing playing" : "Spotify not connected"), x + 45, y + 10, Ui.alpha(Ui.TEXT, a));
@@ -478,15 +489,15 @@ public class LyricsScreen extends Screen {
         int bc = st == LyricsManager.State.SYNCED ? Ui.GREEN : st == LyricsManager.State.LOADING ? 0xFFE8C66A : 0xFFFF8A8A;
         Text bt = Ui.t(badge);
         int bw = textRenderer.getWidth(bt) + 8;
-        Ui.round(ctx, tx, y + 26, bw, 11, 3, Ui.alpha((bc & 0xFFFFFF) | 0x26000000, a));
+        Glass.tinted(ctx, tx, y + 26, bw, 11, 5, bc & 0xFFFFFF, 0.22f, a);
         Ui.text(ctx, bt, tx + 4, y + 28, Ui.alpha(bc, a));
-        Ui.text(ctx, Ui.t(Ui.time(np.positionNow()) + " / " + Ui.time(np.durationMs())), tx + bw + 6, y + 28, Ui.alpha(0xFF6E667A, a));
+        Ui.text(ctx, Ui.t(Ui.time(np.positionNow()) + " / " + Ui.time(np.durationMs())), tx + bw + 6, y + 28, Ui.alpha(0xFFB4ADC2, a));
 
         // progress bar
         float prog = np.durationMs() <= 0 ? 0 : np.positionNow() / (float) np.durationMs();
         int barX = tx, barW = w - 45 - 8, barY = y + h - 4;
-        ctx.fill(barX, barY, barX + barW, barY + 1, Ui.alpha(0x22FFFFFF, a));
-        ctx.fill(barX, barY, barX + Math.round(barW * prog), barY + 1, Ui.alpha(Ui.ACCENT, a));
+        Glass.solid(ctx, barX, barY - 1, barW, 2, 1, Ui.alpha(0x30FFFFFF, a));
+        Glass.solid(ctx, barX, barY - 1, Math.max(2, Math.round(barW * prog)), 2, 1, Ui.alpha(0xFF000000 | Themes.current().a(), a));
 
         // media buttons
         int bx = x + w - buttonsW - 4, by = y + 8;
@@ -503,6 +514,7 @@ public class LyricsScreen extends Screen {
             int inset = i < 3 ? 3 - i : i > s - 4 ? i - (s - 4) : 0;
             ctx.fill(x + inset, y + i, x + s - inset, y + i + 1, Ui.alpha(col, a));
         }
+        Glass.card(ctx, x, y, s, s, 6, 0.5f, a);
         Matrix3x2fStack m = ctx.getMatrices();
         m.pushMatrix();
         m.translate(x + s / 2f, y + s / 2f);
@@ -517,8 +529,8 @@ public class LyricsScreen extends Screen {
         boolean hov = hover(x, y, s, s, true);
         if (hov) hoveredId = id;
         float h = anim(id, hov ? 1f : 0f, 16f, dt);
-        int fill = primary ? Ui.mix(Ui.ACCENT_SOFT, Ui.ACCENT, h) : Ui.mix(0xFF2E2838, 0xFF3A3346, h);
-        Ui.round(ctx, x, y, s, s, 5, Ui.alpha(fill, a));
+        if (primary) Glass.tinted(ctx, x, y, s, s, s / 2, Themes.current().glow(), 0.6f + 0.25f * h, a);
+        else Glass.card(ctx, x, y, s, s, s / 2, 0.3f + 0.7f * h, a);
         int col = Ui.alpha(0xFFFFFFFF, a);
         int cx = x + s / 2, cy = y + s / 2;
         switch (kind) {
@@ -550,11 +562,10 @@ public class LyricsScreen extends Screen {
 
     private int section(DrawContext ctx, String title, int y, float a) {
         y += 2;
-        ctx.drawText(textRenderer, Text.literal("›"), contentX, y, Ui.alpha(Ui.ACCENT, a), false);
-        Text t = Ui.t(title);
-        Ui.text(ctx, t, contentX + 7, y, Ui.alpha(0xFFB9A6E0, a));
-        int lx = contentX + 12 + textRenderer.getWidth(t);
-        ctx.fill(lx, y + 5, contentX + contentW, y + 6, Ui.alpha(0x14FFFFFF, a));
+        Text t = Ui.t(title.toUpperCase());
+        Ui.text(ctx, t, contentX + 3, y, Ui.alpha(0xE6D9D2EA, a));
+        int lx = contentX + 8 + textRenderer.getWidth(t);
+        ctx.fill(lx, y + 5, contentX + contentW, y + 6, Ui.alpha(0x1CFFFFFF, a));
         return y + 13;
     }
 
@@ -568,7 +579,7 @@ public class LyricsScreen extends Screen {
     }
 
     private int step(DrawContext ctx, int y, float a, String num, String text) {
-        Ui.round(ctx, contentX, y, 12, 12, 6, Ui.alpha(Ui.ACCENT_SOFT, a));
+        Glass.tinted(ctx, contentX, y, 12, 12, 6, Themes.current().glow(), 0.6f, a);
         Ui.textCentered(ctx, Ui.t(num), contentX + 6, y + 2, Ui.alpha(0xFFFFFFFF, a));
         List<net.minecraft.text.OrderedText> lines = textRenderer.wrapLines(Ui.t(text), contentW - 20);
         int yy = y + 2;
@@ -589,12 +600,17 @@ public class LyricsScreen extends Screen {
         rowText(ctx, y, a, label, desc, contentW - 40);
 
         boolean on = get.getAsBoolean();
-        float k = anim(id, on ? 1f : 0f, 16f, dt);
-        int sw = 24, sh = 12;
+        float[] sp = spring(id, on ? 1f : 0f, dt);
+        float k = Math.max(0, Math.min(1, sp[0]));
+        int sw = 26, sh = 14;
         int sx = contentX + contentW - sw - 8, sy = y + (h - sh) / 2;
-        Ui.round(ctx, sx, sy, sw, sh, 6, Ui.alpha(Ui.mix(0xFF3A3346, Ui.ACCENT, k), a));
-        int knob = sx + 2 + Math.round(k * (sw - 12));
-        Ui.round(ctx, knob, sy + 2, 8, 8, 4, Ui.alpha(0xFFFFFFFF, a));
+        Glass.well(ctx, sx, sy, sw, sh, 7, a);
+        if (k > 0.01f) Glass.tinted(ctx, sx, sy, sw, sh, 7, 0x34C77B, 0.85f * k, a * Math.min(1, k * 1.5f));
+        // the knob stretches like a drop of liquid while it slides
+        int kw = 10 + Math.round(Math.min(6f, Math.abs(sp[1]) * 1.4f));
+        int travel = sw - 4 - kw;
+        int knob = sx + 2 + Math.round(Math.max(0, Math.min(1, sp[0])) * travel);
+        Glass.bead(ctx, knob, sy + 2, kw, sh - 4, a);
         hits.add(new Hit(contentX, y, contentW, h, id, () -> {
             boolean v = !get.getAsBoolean();
             set.accept(v);
@@ -619,12 +635,14 @@ public class LyricsScreen extends Screen {
         rowText(ctx, y, a, label, desc, contentW - segW - 20);
 
         int sx = contentX + contentW - segW - 8, sy = y + (h - 14) / 2;
-        Ui.round(ctx, sx - 2, sy - 2, segW + 4, 18, 5, Ui.alpha(0xFF15121B, a));
+        Glass.well(ctx, sx - 2, sy - 2, segW + 4, 18, 9, a);
         int selX = sx;
         for (int i = 0; i < selected; i++) selX += widths[i];
-        float hx = anim(id + ".x", selX, 18f, dt);
-        float hw = anim(id + ".w", widths[selected], 18f, dt);
-        Ui.round(ctx, Math.round(hx), sy, Math.round(hw), 14, 4, Ui.alpha(Ui.ACCENT_SOFT, a));
+        float[] hx = spring(id + ".x", selX, dt);
+        float[] hw = spring(id + ".w", widths[selected], dt);
+        float st = Math.min(0.35f, Math.abs(hx[1]) / 600f);
+        int lw = Math.round(hw[0] * (1 + st)), lh = Math.round(14 * (1 - st * 0.4f));
+        Glass.tinted(ctx, Math.round(hx[0] + hw[0] / 2f - lw / 2f), sy + (14 - lh) / 2, lw, lh, lh / 2, Themes.current().glow(), 0.6f, a);
         int x = sx;
         for (int i = 0; i < options.length; i++) {
             String oid = id + "." + i;
@@ -658,11 +676,12 @@ public class LyricsScreen extends Screen {
         Ui.text(ctx, vt, tx - textRenderer.getWidth(vt) - 8, ty - 4, Ui.alpha(0xFFB9A6E0, a));
         float f = Math.max(0, Math.min(1, frac));
         float shown = anim(id, f, 20f, 0.016f);
-        ctx.fill(tx, ty - 1, tx + trackW, ty + 1, Ui.alpha(0xFF3A3346, a));
-        ctx.fill(tx, ty - 1, tx + Math.round(trackW * shown), ty + 1, Ui.alpha(Ui.ACCENT, a));
+        Glass.well(ctx, tx, ty - 2, trackW, 4, 2, a);
+        Glass.solid(ctx, tx, ty - 2, Math.max(4, Math.round(trackW * shown)), 4, 2, Ui.alpha(0xFF000000 | Themes.current().a(), a));
         int kx = tx + Math.round(trackW * shown);
-        Ui.round(ctx, kx - 4, ty - 4, 8, 8, 4, Ui.alpha(0xFFFFFFFF, a));
-        if (hov) Ui.round(ctx, kx - 6, ty - 6, 12, 12, 6, Ui.alpha(0x308B5CF6, a));
+        if (hov) Glass.sheen(ctx, kx, ty, 28, Glass.argb(0.35f * a, Themes.current().a()));
+        int kw = hov ? 14 : 12;
+        Glass.bead(ctx, kx - kw / 2, ty - 5, kw, 10, a);
         hits.add(new Hit(tx - 4, y, trackW + 8, h, id, null, v -> {
             double nf = Math.max(0, Math.min(1, (v - tx) / trackW));
             set.accept(nf);
@@ -682,8 +701,8 @@ public class LyricsScreen extends Screen {
         boolean hov = hover(x, y, w, h, true);
         if (hov) hoveredId = id;
         float k = anim(id, hov ? 1f : 0f, 16f, dt);
-        int fill = primary ? Ui.mix(Ui.ACCENT_SOFT, Ui.ACCENT, k) : Ui.mix(0xFF2E2838, 0xFF3A3346, k);
-        Ui.roundOutlined(ctx, x, y, w, h, 4, Ui.alpha(fill, a), Ui.alpha(primary ? 0xFFA884FF : Ui.STROKE, a));
+        if (primary) Glass.tinted(ctx, x, y, w, h, h / 2, Themes.current().glow(), 0.6f + 0.25f * k, a);
+        else Glass.card(ctx, x, y, w, h, h / 2, 0.3f + 0.7f * k, a);
         Ui.textCentered(ctx, Ui.t(label), x + w / 2, y + (h - 8) / 2, Ui.alpha(0xFFFFFFFF, a));
         hits.add(new Hit(x, y, w, h, id, () -> { Sounds.play(Sounds.CLICK); action.run(); }, null, true));
     }
@@ -693,7 +712,7 @@ public class LyricsScreen extends Screen {
     }
 
     private void rowBackground(DrawContext ctx, int y, int h, float a, float hover) {
-        Ui.round(ctx, contentX, y, contentW, h, 5, Ui.alpha(Ui.mix(Ui.CARD, Ui.CARD_HOVER, hover), a));
+        Glass.card(ctx, contentX, y, contentW, h, 10, hover, a);
     }
 
     private void rowText(DrawContext ctx, int y, float a, String label, String desc, int maxW) {
@@ -701,7 +720,7 @@ public class LyricsScreen extends Screen {
             Ui.text(ctx, Ui.t(label), contentX + 8, y + 5, Ui.alpha(Ui.TEXT, a));
         } else {
             Ui.text(ctx, Ui.t(label), contentX + 8, y + 4, Ui.alpha(Ui.TEXT, a));
-            Ui.text(ctx, Ui.t(Ui.ellipsize(null, desc, maxW, Ui.FONT)), contentX + 8, y + 14, Ui.alpha(0xFF7D7589, a));
+            Ui.text(ctx, Ui.t(Ui.ellipsize(null, desc, maxW, Ui.FONT)), contentX + 8, y + 14, Ui.alpha(0xFFADA6BB, a));
         }
     }
 
@@ -718,6 +737,33 @@ public class LyricsScreen extends Screen {
         float v = cur == null ? target : Ui.approach(cur, target, speed, dt);
         anim.put(id, v);
         return v;
+    }
+
+    /** Slightly under-damped spring: returns {position, velocity}. Gives the wobbly "liquid" motion. */
+    private float[] spring(String id, float target, float dt) {
+        float[] st = springs.computeIfAbsent(id, k -> new float[]{target, 0});
+        float k = 240f, d = 2f * (float) Math.sqrt(k) * 0.62f;
+        int n = 4;
+        float h = dt / n;
+        for (int i = 0; i < n; i++) {
+            float acc = k * (target - st[0]) - d * st[1];
+            st[1] += acc * h;
+            st[0] += st[1] * h;
+        }
+        return st;
+    }
+
+    @Override
+    public void renderBackground(DrawContext ctx, int mouseX, int mouseY, float delta) {
+        if (client == null || client.world == null) {
+            super.renderBackground(ctx, mouseX, mouseY, delta);
+            return;
+        }
+        // frosted world behind the glass: blur it, then only a light tint (no heavy darkening)
+        applyBlur(ctx);
+        float a = Math.min(1f, openAnim * 1.4f);
+        int tint = Themes.current().glow();
+        ctx.fillGradient(0, 0, width, height, Glass.argb(0.10f * a, tint), Glass.argb(0.28f * a, 0x05040A));
     }
 
     private Hit hitAt(double x, double y) {
