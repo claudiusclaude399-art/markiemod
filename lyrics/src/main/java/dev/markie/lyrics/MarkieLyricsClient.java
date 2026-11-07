@@ -55,6 +55,7 @@ public class MarkieLyricsClient implements ClientModInitializer {
             if (steps != 0) nudgeDistance(mc, steps);
         });
 
+        WorldRenderEvents.AFTER_ENTITIES.register(dev.markie.lyrics.render.LightShow::render);
         WorldRenderEvents.AFTER_ENTITIES.register(dev.markie.lyrics.render.AtmosphereRenderer::renderWorld);
         WorldRenderEvents.AFTER_ENTITIES.register(SkyLyricsRenderer::render);
         HudElementRegistry.attachElementAfter(VanillaHudElements.SUBTITLES, Identifier.of("markielyrics", "hud"), HudRenderer::render);

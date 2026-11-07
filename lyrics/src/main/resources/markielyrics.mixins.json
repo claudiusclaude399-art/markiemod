@@ -6,7 +6,8 @@
   "client": [
     "SkyRenderingMixin",
     "FogRendererMixin",
-    "GameOptionsMixin"
+    "GameOptionsMixin",
+    "GameRendererMixin"
   ],
   "injectors": { "defaultRequire": 0 }
 }

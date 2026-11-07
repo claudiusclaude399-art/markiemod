@@ -30,6 +30,7 @@ public final class HudRenderer {
     public static void render(DrawContext ctx, RenderTickCounter tick) {
         MinecraftClient mc = MinecraftClient.getInstance();
         if (mc.player == null) return;
+        dev.markie.lyrics.music.MusicPulse.update();
         AtmosphereRenderer.renderOverlay(ctx);
         if (mc.options.hudHidden) return;
         long nowNs = System.nanoTime();
@@ -111,9 +112,14 @@ public final class HudRenderer {
             int themeCol = Colors.colorA() | 0xFF000000;
             double time = System.currentTimeMillis() / 1000.0;
             for (int i = 0; i < 4; i++) {
-                float v = np.playing()
-                    ? (float) (0.35 + 0.65 * Math.abs(Math.sin(time * (3.1 + i * 1.7) + i * 1.3)))
-                    : 0.2f;
+                float v;
+                if (!np.playing()) v = 0.2f;
+                else if (cfg.react) {
+                    dev.markie.lyrics.music.MusicPulse.update();
+                    float wob = (float) Math.abs(Math.sin(time * (2.3 + i * 1.3) + i * 1.9));
+                    v = Math.min(1f, 0.2f + 0.45f * dev.markie.lyrics.music.MusicPulse.level() * (0.6f + 0.4f * wob)
+                        + 0.55f * dev.markie.lyrics.music.MusicPulse.beat() * (i == 0 || i == 3 ? 1f : 0.7f + 0.3f * wob));
+                } else v = (float) (0.35 + 0.65 * Math.abs(Math.sin(time * (3.1 + i * 1.7) + i * 1.3)));
                 int bh = Math.max(2, Math.round(9 * v));
                 ctx.fill(bx + i * 4, y + 13 - bh, bx + i * 4 + 2, y + 13, Ui.alpha(themeCol, a));
             }

@@ -105,7 +105,13 @@ public final class LineRenderer {
             }
 
             cv.rotate(POSE.rot);
+            cv.rotateY(POSE.rotY);
+            cv.rotateX(POSE.rotX);
             float sc = POSE.scale * (1f + 0.1f * hl);
+            if (cfg.reactLyrics && cfg.react && p >= 1f && exit <= 0) {
+                // words that are already in bounce gently to the beat
+                sc *= 1f + 0.07f * dev.markie.lyrics.music.MusicPulse.strength() * dev.markie.lyrics.music.MusicPulse.beat();
+            }
             float ty = -4.5f;
             int rgb = Colors.word(i, n, xFrac);
             if (hl > 0) rgb = LyricsAnimator.lerpRgb(rgb, 0xFFFFFF, 0.35f * hl);
@@ -135,6 +141,8 @@ public final class LineRenderer {
                     cv.push();
                     cv.translate(lcx + LETTER.dx, LETTER.dy);
                     cv.rotate(LETTER.rot);
+                    cv.rotateY(LETTER.rotY);
+                    cv.rotateX(LETTER.rotX);
                     cv.scale(LETTER.scale);
                     drawGlyph(cv, cfg, ls[k], -s.letterW[i][k] / 2f, ty, la, rgb, glow);
                     cv.pop();
@@ -150,7 +158,9 @@ public final class LineRenderer {
         if (alpha < 0.02f) return;
         if (cfg.depth) {
             // extruded 3D edge: stacked copies stepping down-right, darkest at the back
-            int layers = cv instanceof Canvas.World ? 6 : Math.max(2, Math.round(5 * cfg.depthAmount));
+            boolean world = cv instanceof Canvas.World;
+            // in the world: many thin slices make a solid body you can see from the side
+            int layers = world ? Math.max(6, Math.round(14 * cfg.depthAmount)) : Math.max(2, Math.round(5 * cfg.depthAmount));
             float step = 0.3f;
             int deep = Colors.depth(rgb);
             float da = alpha * alpha;   // edge fades in a bit later than the face, so the word "solidifies"
@@ -161,8 +171,8 @@ public final class LineRenderer {
                 if (cv instanceof Canvas.World) {
                     // in the world: a real extrusion going backwards, so the letters are always the closest
                     // thing to the camera (text there is depth-sorted) and angled lines show solid 3D sides
-                    cv.depth(-0.32f * k * cfg.depthAmount);
-                    cv.text(t, x + k * 0.04f, y + k * 0.13f, LyricsAnimator.argb(da * 0.95f, col), false);
+                    cv.depth(-0.15f * k);
+                    cv.text(t, x + k * 0.02f, y + k * 0.06f, LyricsAnimator.argb(da * 0.97f, col), false);
                 } else {
                     cv.text(t, x + k * step * 0.55f, y + k * step, LyricsAnimator.argb(da * 0.95f, col), false);
                 }

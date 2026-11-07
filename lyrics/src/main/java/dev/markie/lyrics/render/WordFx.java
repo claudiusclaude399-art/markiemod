@@ -9,7 +9,7 @@ import net.minecraft.text.Text;
  */
 public final class WordFx {
     /** Per-word transform, in text units (one unit = one font pixel). */
-    public static final class Pose { public float dx, dy, scale, rot, alpha, bright; }
+    public static final class Pose { public float dx, dy, scale, rot, alpha, bright, rotY, rotX; }
 
     /** One particle of a burst. */
     public static final class Spark { public float x, y, scale, rot, alpha; public int rgb; }
@@ -30,7 +30,7 @@ public final class WordFx {
     /** p = 0..1 entrance progress, sinceMs = time since the word started, i = word index. */
     public static void pose(LyricsConfig c, float p, long sinceMs, int i, Pose out) {
         float e = LyricsAnimator.easeOutCubic(p);
-        out.dx = 0; out.dy = 0; out.scale = 1; out.rot = 0; out.alpha = e; out.bright = 0;
+        out.dx = 0; out.dy = 0; out.scale = 1; out.rot = 0; out.alpha = e; out.bright = 0; out.rotY = 0; out.rotX = 0;
         switch (c.popStyle) {
             case SMOOTH -> {
                 // like the video: the word fades in slightly big and pale, then settles into place
@@ -60,6 +60,17 @@ public final class WordFx {
             case SLIDE -> {
                 out.dx = -(1f - e) * 18f;
                 out.rot = (1f - e) * 0.15f;
+            }
+            case FLIP -> {
+                // swings round like a door on its vertical axis: you see the 3D body as it turns
+                out.rotY = (1f - LyricsAnimator.easeOutBack(p)) * 1.6f;
+                out.alpha = Math.min(1f, p * 2.5f);
+            }
+            case TUMBLE -> {
+                // tips forward from lying flat, like a sign standing up
+                out.rotX = (1f - LyricsAnimator.easeOutBack(p)) * -1.5f;
+                out.alpha = Math.min(1f, p * 2.5f);
+                out.dy = -(1f - e) * 2f;
             }
             case FADE -> {
                 out.alpha = p;

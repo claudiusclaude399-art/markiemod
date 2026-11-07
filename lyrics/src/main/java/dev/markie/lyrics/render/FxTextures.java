@@ -17,6 +17,7 @@ public final class FxTextures {
     public static final Identifier PETAL = id("petal");
     public static final Identifier FLAKE = id("flake");
     public static final Identifier VIGNETTE = id("vignette");
+    public static final Identifier BEAM = id("beam");
     private static boolean ready;
 
     private FxTextures() {}
@@ -64,6 +65,12 @@ public final class FxTextures {
             float arms = (float) Math.pow(Math.abs(Math.cos(ang * 3)), 18) * (1f - smooth(0.6f, 0.95f, d));
             float core = (float) Math.exp(-d * d * 20f);
             return Math.min(1f, arms * 0.9f + core + (float) Math.exp(-d * d * 3f) * 0.25f);
+        });
+        make(BEAM, S, (x, y) -> {
+            // soft across, bright at the bottom (v = 1) fading out towards the top
+            float u = (x + 0.5f) / S * 2f - 1f, v = (y + 0.5f) / S;
+            float across = (float) Math.exp(-u * u * 7f) * 0.7f + (float) Math.exp(-u * u * 60f) * 0.5f;
+            return across * v * v;
         });
         make(VIGNETTE, 128, (x, y) -> {
             float u = (x + 0.5f) / 128f * 2f - 1f, v = (y + 0.5f) / 128f * 2f - 1f;

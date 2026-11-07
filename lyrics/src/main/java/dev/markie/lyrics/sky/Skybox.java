@@ -69,7 +69,18 @@ public final class Skybox {
         float spin = (float) ((System.currentTimeMillis() % 3_600_000L) / 1000.0 * c.skySpin * Math.PI / 180.0);
         Matrix4f mv = new Matrix4f(RenderSystem.getModelViewMatrix()).rotateY(spin);
         float b = c.skyBrightness;
-        GpuBufferSlice uniforms = RenderSystem.getDynamicUniforms().write(mv, new Vector4f(b, b, b, 1f), new Vector3f(), new Matrix4f());
+        float r = b, g = b, bl = b;
+        if (c.reactSky) {
+            // the sky breathes with the music: brighter on each beat, tinted with the lyric colour on the bar
+            float str = dev.markie.lyrics.music.MusicPulse.strength();
+            float k = 1f + str * (0.22f * dev.markie.lyrics.music.MusicPulse.beat() + 0.08f * dev.markie.lyrics.music.MusicPulse.energy());
+            int tint = dev.markie.lyrics.render.Colors.glow();
+            float tk = 0.35f * str * dev.markie.lyrics.music.MusicPulse.bar();
+            r = b * k * (1f + tk * (((tint >> 16) & 255) / 255f - 0.5f));
+            g = b * k * (1f + tk * (((tint >> 8) & 255) / 255f - 0.5f));
+            bl = b * k * (1f + tk * ((tint & 255) / 255f - 0.5f));
+        }
+        GpuBufferSlice uniforms = RenderSystem.getDynamicUniforms().write(mv, new Vector4f(r, g, bl, 1f), new Vector3f(), new Matrix4f());
         RenderSystem.ShapeIndexBuffer quads = RenderSystem.getSequentialBuffer(VertexFormat.DrawMode.QUADS);
         GpuBuffer indices = quads.getIndexBuffer(72);
         Framebuffer fb = mc.getFramebuffer();

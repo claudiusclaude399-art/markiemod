@@ -42,7 +42,7 @@ public class LyricsScreen extends Screen {
         COLOURS("Colours", "◆", "Themes, your own colours, rainbow."),
         EFFECTS("Effects", "✦", "How words pop in, plus particles."),
         SKIES("Skies", "☁", "Custom skyboxes with matching fog."),
-        ATMOSPHERE("Atmosphere", "❄", "Drifting particles and screen mood."),
+        ATMOSPHERE("Atmosphere", "❄", "Make the world react to the music."),
         HUD("HUD", "▣", "The now-playing pill on your screen."),
         SPOTIFY("Spotify", "◉", "Connect your Spotify account."),
         SOUNDS("Sounds", "♪", "Clicks, chimes and volume.");
@@ -248,7 +248,7 @@ public class LyricsScreen extends Screen {
         }
 
         Ui.text(ctx, Ui.t("Markie Lyrics"), px + 11, py + ph - 23, Ui.alpha(Ui.MUTED, alpha));
-        Ui.text(ctx, Ui.t("v1.6 · Right Shift"), px + 11, py + ph - 14, Ui.alpha(0xFF8E879C, alpha));
+        Ui.text(ctx, Ui.t("v1.7 · Right Shift"), px + 11, py + ph - 14, Ui.alpha(0xFF8E879C, alpha));
     }
 
     private void drawHeader(DrawContext ctx, float alpha) {
@@ -592,13 +592,13 @@ public class LyricsScreen extends Screen {
         y = toggle(ctx, y, a, dt, "Cinematic motion", "Lines slowly fly towards you while they show", () -> c.cinematicMotion, v -> c.cinematicMotion = v);
         y = toggle(ctx, y, a, dt, "Line pairs", "The next line forms under the first, then both leave", () -> c.linePairs, v -> c.linePairs = v);
         y = toggle(ctx, y, a, dt, "Song title card", "Title and artist appear in the sky when a song starts", () -> c.titleCard, v -> c.titleCard = v);
-        y = toggle(ctx, y, a, dt, "3D depth", "A solid extruded edge under the letters", () -> c.depth, v -> c.depth = v);
+        y = toggle(ctx, y, a, dt, "3D lyrics", "Letters get a solid 3D body (try the Flip 3D pop-in)", () -> c.depth, v -> c.depth = v);
         if (c.depth) {
-            y = slider(ctx, y, a, "Depth", "How thick the 3D edge is", Math.round(c.depthAmount * 100) + "%",
+            y = slider(ctx, y, a, "Thickness", "How deep the 3D letters are", Math.round(c.depthAmount * 100) + "%",
                 (c.depthAmount - 0.3f) / 1.7f, f -> c.depthAmount = Math.round((0.3f + (float) f * 1.7f) * 20f) / 20f);
         }
         y = section(ctx, "Pop-in", y, a);
-        y = chips(ctx, y, a, dt, "pop", new String[]{"Smooth", "Pop", "Bounce", "Zoom", "Spin", "Slide", "Fade"}, c.popStyle.ordinal(),
+        y = chips(ctx, y, a, dt, "pop", new String[]{"Smooth", "Pop", "Bounce", "Zoom", "Spin", "Slide", "Fade", "Flip 3D", "Tumble 3D"}, c.popStyle.ordinal(),
             i -> { c.popStyle = LyricsConfig.PopStyle.values()[i]; restartPreview(); });
         y = toggle(ctx, y, a, dt, "Letter by letter", "Each letter pops in on its own", () -> c.perLetter, v -> { c.perLetter = v; restartPreview(); });
         y = section(ctx, "Exit", y, a);
@@ -728,6 +728,37 @@ public class LyricsScreen extends Screen {
 
     private int atmosphere(DrawContext ctx, int y, float a, float dt) {
         LyricsConfig c = LyricsConfig.get();
+        y = section(ctx, "React to music", y, a);
+        y = toggle(ctx, y, a, dt, "React to music", "The world pulses and moves with the beat", () -> c.react, v -> c.react = v);
+        if (c.react) {
+            y = beatMeter(ctx, y, a);
+            y = slider(ctx, y, a, "Strength", "How strongly things react", Math.round(c.reactStrength * 100) + "%",
+                c.reactStrength / 2f, f -> c.reactStrength = Math.round((float) f * 40f) / 20f);
+            y = segmented(ctx, y, a, dt, "Listen to", c.listen == LyricsConfig.Listen.RHYTHM
+                    ? "Beat worked out from the sung words (always works)"
+                    : "Real sound from a recording device",
+                new String[]{"Lyrics rhythm", "Audio device"}, c.listen.ordinal(), i -> c.listen = LyricsConfig.Listen.values()[i]);
+            if (c.listen == LyricsConfig.Listen.AUDIO) {
+                java.util.List<String> devs = dev.markie.lyrics.music.AudioListener.devices();
+                String cur = c.audioDevice.isEmpty() ? "Default input" : c.audioDevice;
+                y = button(ctx, y, a, dt, "Device: " + Ui.ellipsize(null, cur, contentW - 70, Ui.FONT) + "  ›", false, () -> {
+                    // cycle through devices
+                    java.util.List<String> all = new java.util.ArrayList<>();
+                    all.add("");
+                    all.addAll(devs);
+                    int i = all.indexOf(c.audioDevice);
+                    c.audioDevice = all.get((i + 1) % all.size());
+                });
+                y = paragraph(ctx, y, a, dev.markie.lyrics.music.AudioListener.status() + ". To hear what your PC plays, pick \"Stereo Mix\" "
+                    + "(Windows: enable it in Sound settings > Recording) or a loopback device like BlackHole or VB-Cable.");
+            }
+            y = toggle(ctx, y, a, dt, "Light show", "Coloured beams around you flash on the beat", () -> c.lightShow, v -> c.lightShow = v);
+            y = toggle(ctx, y, a, dt, "Sky pulse", "The sky and fog glow brighter on each beat", () -> c.reactSky, v -> c.reactSky = v);
+            y = toggle(ctx, y, a, dt, "Particles dance", "Particles pulse and drift with the music", () -> c.reactParticles, v -> c.reactParticles = v);
+            y = toggle(ctx, y, a, dt, "Lyrics bounce", "Words gently bounce to the beat", () -> c.reactLyrics, v -> c.reactLyrics = v);
+            y = toggle(ctx, y, a, dt, "Screen pulse", "Soft coloured glow at the edges on the beat", () -> c.reactScreen, v -> c.reactScreen = v);
+            y = toggle(ctx, y, a, dt, "Camera kick", "Tiny zoom on each beat (can feel intense)", () -> c.reactCamera, v -> c.reactCamera = v);
+        }
         y = section(ctx, "Particles around you", y, a);
         y = chips(ctx, y, a, dt, "atmo", new String[]{"None", "Fireflies", "Stardust", "Snow", "Petals", "Embers"}, c.atmo.ordinal(),
             i -> c.atmo = LyricsConfig.Atmo.values()[i]);
@@ -748,6 +779,27 @@ public class LyricsScreen extends Screen {
         y = toggle(ctx, y, a, dt, "Cinematic bars", "Black bars top and bottom, like a music video", () -> c.cinemaBars, v -> c.cinemaBars = v);
         y = toggle(ctx, y, a, dt, "Only while music plays", "Fade everything out when the song is paused", () -> c.atmoOnlyMusic, v -> c.atmoOnlyMusic = v);
         return y;
+    }
+
+    /** Live beat light + tempo readout, so you can see what the world is reacting to. */
+    private int beatMeter(DrawContext ctx, int y, float a) {
+        dev.markie.lyrics.music.MusicPulse.update();
+        int h = 22;
+        Glass.card(ctx, contentX, y, contentW, h, 10, 0.2f, a);
+        float b = dev.markie.lyrics.music.MusicPulse.beat();
+        int dotCol = LyricsAnimator.lerpRgb(0x4A4458, Colors.colorA(), Math.min(1f, b * 1.3f));
+        Glass.sheen(ctx, contentX + 12, y + h / 2, Math.round(10 + 22 * b), Glass.argb(0.6f * b * a, Colors.colorA()));
+        Glass.solid(ctx, contentX + 8, y + 7, 8, 8, 4, Ui.alpha(0xFF000000 | dotCol, a));
+        float bpm = dev.markie.lyrics.music.MusicPulse.bpm();
+        String txt = SpotifyClient.current() == null ? "Waiting for a song…"
+            : LyricsConfig.get().listen == LyricsConfig.Listen.AUDIO ? "Listening"
+            : bpm > 0 ? "Beat " + Math.round(bpm) + " BPM" : "Finding the beat…";
+        Ui.text(ctx, Ui.t(txt), contentX + 22, y + 7, Ui.alpha(Ui.TEXT, a));
+        int mw = 90, mx0 = contentX + contentW - mw - 8;
+        Glass.well(ctx, mx0, y + 9, mw, 4, 2, a);
+        Glass.solid(ctx, mx0, y + 9, Math.max(4, Math.round(mw * dev.markie.lyrics.music.MusicPulse.energy())), 4, 2,
+            Ui.alpha(0xFF000000 | Colors.colorA(), a));
+        return y + h + 3;
     }
 
     private int hud(DrawContext ctx, int y, float a, float dt) {

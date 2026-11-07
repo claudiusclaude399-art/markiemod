@@ -23,6 +23,10 @@ public interface Canvas {
     void scale(float s);
     /** Move towards (+) or away from (-) the viewer; only matters in the world, where text is depth-sorted. */
     default void depth(float dz) {}
+    /** Turn around the vertical axis (real 3D in the world; squashes on screen). */
+    void rotateY(float radians);
+    /** Tip forwards/backwards around the horizontal axis. */
+    void rotateX(float radians);
     void text(Text t, float x, float y, int argb, boolean shadow);
     /** A tinted soft sprite centred on (cx, cy). */
     void sprite(Identifier tex, float cx, float cy, float halfW, float halfH, int argb);
@@ -45,6 +49,8 @@ public interface Canvas {
         public void rotate(float r) { if (r != 0) ms.multiply(RotationAxis.POSITIVE_Z.rotation(r)); }
         public void scale(float s) { ms.scale(s, s, s); }
         public void depth(float dz) { ms.translate(0, 0, dz); }
+        public void rotateY(float r) { if (r != 0) ms.multiply(RotationAxis.POSITIVE_Y.rotation(r)); }
+        public void rotateX(float r) { if (r != 0) ms.multiply(RotationAxis.POSITIVE_X.rotation(r)); }
 
         public void text(Text t, float x, float y, int argb, boolean shadow) {
             if ((argb >>> 24) < 6) return;
@@ -78,6 +84,8 @@ public interface Canvas {
         public void translate(float x, float y) { m.translate(x, y); }
         public void rotate(float r) { if (r != 0) m.rotate(r); }
         public void scale(float s) { m.scale(s, s); }
+        public void rotateY(float r) { if (r != 0) m.scale(Math.max(0.02f, (float) Math.abs(Math.cos(r))), 1f); }
+        public void rotateX(float r) { if (r != 0) m.scale(1f, Math.max(0.02f, (float) Math.abs(Math.cos(r)))); }
 
         public void text(Text t, float x, float y, int argb, boolean shadow) {
             if ((argb >>> 24) < 6) return;

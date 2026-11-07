@@ -60,7 +60,13 @@ public final class AtmosphereRenderer {
         float boxW = 22f, boxH = 14f;
         double cx = cam.x, cy = cam.y + 3, cz = cam.z;
         int n = Math.round((kind == LyricsConfig.Atmo.SNOW ? 240 : kind == LyricsConfig.Atmo.PETALS ? 90 : 120) * c.atmoDensity);
-        double t = (System.currentTimeMillis() % 10_000_000L) / 1000.0;
+        dev.markie.lyrics.music.MusicPulse.update();
+        boolean react = c.reactParticles && c.react;
+        // with "react" on, particles drift on music time: faster when the song is busy, still when paused
+        double t = react ? dev.markie.lyrics.music.MusicPulse.musicTime() * 1.4 + 1000 : (System.currentTimeMillis() % 10_000_000L) / 1000.0;
+        float str = dev.markie.lyrics.music.MusicPulse.strength();
+        float beatGrow = react ? 1f + 0.7f * str * dev.markie.lyrics.music.MusicPulse.beat() : 1f;
+        float beatGlow = react ? 0.75f + 0.25f * dev.markie.lyrics.music.MusicPulse.energy() + 0.5f * str * dev.markie.lyrics.music.MusicPulse.beat() : 1f;
 
         // two passes: soft halos first, then the bright cores (keeps texture switches low)
         for (int pass = 0; pass < 2; pass++) {
@@ -135,13 +141,13 @@ public final class AtmosphereRenderer {
                 double ox = cx + rx - cam.x, oy = cy + ry - cam.y, oz = cz + rz - cam.z;
                 double d = Math.sqrt(ox * ox + oy * oy + oz * oz);
                 float near = (float) Math.min(1, Math.max(0, (d - 0.8) / 1.2));
-                float a = alpha * edge * near * presence;
+                float a = Math.min(1f, alpha * edge * near * presence * beatGlow);
                 if (a < 0.02f) continue;
 
                 ms.push();
                 ms.translate(ox, oy, oz);
                 ms.multiply(camera.getRotation());
-                float sc = size * c.atmoSize;
+                float sc = size * c.atmoSize * beatGrow;
                 ms.scale(sc, -sc, sc);
                 if (spin != 0) ms.multiply(RotationAxis.POSITIVE_Z.rotation(spin));
                 if (pass == 0) {
@@ -191,6 +197,16 @@ public final class AtmosphereRenderer {
         if (c.haze > 0) {
             int top = LyricsAnimator.argb(c.haze * 0.22f * presence * (1f + pulse * 0.8f), Colors.colorA());
             ctx.fillGradient(0, 0, sw, Math.round(sh * 0.5f), top, 0x00000000);
+        }
+        if (c.reactScreen && c.react) {
+            dev.markie.lyrics.music.MusicPulse.update();
+            pulse = Math.max(pulse, dev.markie.lyrics.music.MusicPulse.strength() * (0.35f * dev.markie.lyrics.music.MusicPulse.beat() + 0.45f * dev.markie.lyrics.music.MusicPulse.bar()));
+            if (c.vignette < 0.05f && pulse > 0.01f) {
+                // even with no vignette set, flash a soft coloured edge on the beat
+                int tint = LyricsAnimator.lerpRgb(Colors.glow(), 0x000000, 0.2f);
+                ctx.drawTexture(RenderPipelines.GUI_TEXTURED, FxTextures.VIGNETTE, 0, 0, 0, 0, sw, sh, 128, 128, 128, 128,
+                    LyricsAnimator.argb(Math.min(0.6f, pulse * 0.45f * presence), tint));
+            }
         }
         float vig = c.vignette * presence + pulse * 0.35f * presence;
         if (vig > 0.01f) {

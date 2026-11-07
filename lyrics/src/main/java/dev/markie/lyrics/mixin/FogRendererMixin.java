@@ -19,9 +19,13 @@ public class FogRendererMixin {
     @Inject(method = "getFogColor", at = @At("RETURN"), require = 0)
     private void markielyrics$fogColor(Camera camera, float tickProgress, ClientWorld world, int viewDistance, float skyDarkness,
                                        CallbackInfoReturnable<Vector4f> cir) {
-        if (!LyricsConfig.get().skyFog || !Skybox.active()) return;
         if (world.getRegistryKey() != World.OVERWORLD || camera.getSubmersionType() != CameraSubmersionType.NONE) return;
         Vector4f v = cir.getReturnValue();
+        if (LyricsConfig.get().reactSky) {
+            float k = 1f + dev.markie.lyrics.music.MusicPulse.strength() * 0.15f * dev.markie.lyrics.music.MusicPulse.beat();
+            v.set(Math.min(1f, v.x * k), Math.min(1f, v.y * k), Math.min(1f, v.z * k), v.w);
+        }
+        if (!LyricsConfig.get().skyFog || !Skybox.active()) return;
         int h = Skybox.horizonColor();
         float b = LyricsConfig.get().skyBrightness;
         float r = Math.min(1f, ((h >> 16) & 255) / 255f * b), g = Math.min(1f, ((h >> 8) & 255) / 255f * b), bl = Math.min(1f, (h & 255) / 255f * b);

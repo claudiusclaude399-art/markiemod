@@ -14,7 +14,7 @@ public class LyricsConfig {
     public enum Where { SKY, FLOATING, SCREEN }
     public enum Reveal { WORD, LINE }
     public enum ColorMode { THEME, CUSTOM, RAINBOW, ALBUM, SKY }
-    public enum PopStyle { SMOOTH, POP, BOUNCE, ZOOM, SPIN, SLIDE, FADE }
+    public enum PopStyle { SMOOTH, POP, BOUNCE, ZOOM, SPIN, SLIDE, FADE, FLIP, TUMBLE }
     public enum Preset { CINEMATIC, SPARKLE, MINIMAL, CUSTOM }
     /** Where song info comes from: Auto (Web API if it works, else the app on this PC), the PC app only, or the Web API only. */
     public enum Source { AUTO, LOCAL, WEB }
@@ -25,6 +25,7 @@ public class LyricsConfig {
     public enum Vfx { NONE, SPARKLES, STARS, HEARTS, NOTES, GLITTER }
     public enum Exit { FADE_UP, DISSOLVE, BLOW, SHRINK, DROP }
     public enum Atmo { NONE, FIREFLIES, STARDUST, SNOW, PETALS, EMBERS }
+    public enum Listen { RHYTHM, AUDIO }
 
     // Spotify
     public Source source = Source.AUTO;
@@ -99,6 +100,18 @@ public class LyricsConfig {
     public float haze = 0f;        // 0 .. 1
     public boolean linePulse = false;
     public boolean cinemaBars = false;
+
+    // React to music
+    public boolean react = true;
+    public float reactStrength = 1f;  // 0 .. 2
+    public Listen listen = Listen.RHYTHM;
+    public String audioDevice = "";
+    public boolean reactSky = true;
+    public boolean reactParticles = true;
+    public boolean reactLyrics = true;
+    public boolean lightShow = true;
+    public boolean reactScreen = true;
+    public boolean reactCamera = false;
 
     // Sky
     public boolean skyEnabled = false;
@@ -210,6 +223,9 @@ public class LyricsConfig {
         atmoSize = clamp(atmoSize, 0.5f, 2f);
         vignette = clamp(vignette, 0f, 1f);
         haze = clamp(haze, 0f, 1f);
+        reactStrength = clamp(reactStrength, 0f, 2f);
+        if (listen == null) listen = Listen.RHYTHM;
+        if (audioDevice == null) audioDevice = "";
         rainbowSpeed = clamp(rainbowSpeed, 0f, 2f);
         rainbowSpread = clamp(rainbowSpread, 0f, 1f);
         opacity = clamp(opacity, 0.2f, 1f);

@@ -23,6 +23,7 @@ public final class SkyLyricsRenderer {
     public static void render(WorldRenderContext ctx) {
         MinecraftClient mc = MinecraftClient.getInstance();
         if (mc.world == null || mc.player == null) return;
+        dev.markie.lyrics.music.MusicPulse.update();
         Camera camera = mc.gameRenderer.getCamera();
         LyricsConfig cfg = LyricsConfig.get();
         LyricsAnimator.update(camera.getYaw(), camera.getPitch());
