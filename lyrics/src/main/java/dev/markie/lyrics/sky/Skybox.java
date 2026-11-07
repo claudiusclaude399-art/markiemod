@@ -40,6 +40,7 @@ public final class Skybox {
 
     private static SkyTexture texture;
     private static int loadedSky = -1;
+    private static boolean loaded3d;
     private static volatile int generating = -1;
     private static volatile int horizonRgb = 0x8090A0;
     private static GpuBuffer box;
@@ -56,7 +57,7 @@ public final class Skybox {
         LyricsConfig c = LyricsConfig.get();
         if (!c.skyEnabled) return false;
         ensureTexture(c.sky);
-        return loadedSky == c.sky && texture != null;
+        return loadedSky >= 0 && texture != null;
     }
 
     public static int horizonColor() { return horizonRgb; }
@@ -80,10 +81,31 @@ public final class Skybox {
             g = b * k * (1f + tk * (((tint >> 8) & 255) / 255f - 0.5f));
             bl = b * k * (1f + tk * ((tint & 255) / 255f - 0.5f));
         }
+        if (dev.markie.lyrics.render.EnvColors.active()) {
+            // multiply the sky picture by the cover colour (normalised so brightness stays about the same)
+            int m = dev.markie.lyrics.render.EnvColors.main();
+            float mr = ((m >> 16) & 255) / 255f, mg = ((m >> 8) & 255) / 255f, mb = (m & 255) / 255f;
+            float mx = Math.max(0.05f, Math.max(mr, Math.max(mg, mb)));
+            float k = 0.6f * dev.markie.lyrics.render.EnvColors.amount();
+            r *= 1f + (mr / mx * 1.1f - 1f) * k;
+            g *= 1f + (mg / mx * 1.1f - 1f) * k;
+            bl *= 1f + (mb / mx * 1.1f - 1f) * k;
+        }
         GpuBufferSlice uniforms = RenderSystem.getDynamicUniforms().write(mv, new Vector4f(r, g, bl, 1f), new Vector3f(), new Matrix4f());
         RenderSystem.ShapeIndexBuffer quads = RenderSystem.getSequentialBuffer(VertexFormat.DrawMode.QUADS);
         GpuBuffer indices = quads.getIndexBuffer(72);
         Framebuffer fb = mc.getFramebuffer();
+        // build this frame's 3D sky objects before the render pass opens
+        GpuBuffer sceneVb = null, sceneIdx = null;
+        int sceneCount = 0;
+        try (BuiltBuffer scene = Sky3D.build(loadedSky, spin)) {
+            if (scene != null) {
+                sceneCount = Sky3D.indexCount();
+                sceneVb = RenderSystem.getDevice().createBuffer(() -> "Markie Lyrics 3D sky", 40, scene.getBuffer());
+                sceneIdx = quads.getIndexBuffer(sceneCount);
+            }
+        }
+        if (Sky3D.atlas() == null) sceneVb = null;
         try (RenderPass pass = RenderSystem.getDevice().createCommandEncoder().createRenderPass(() -> "Markie Lyrics skybox",
                 fb.getColorAttachmentView(), OptionalInt.empty(), fb.getDepthAttachmentView(), OptionalDouble.empty())) {
             pass.setPipeline(RenderPipelines.POSITION_TEX_COLOR_END_SKY);
@@ -93,6 +115,16 @@ public final class Skybox {
             pass.setVertexBuffer(0, box);
             pass.setIndexBuffer(indices, quads.getIndexType());
             pass.drawIndexed(0, 0, 72, 1);
+
+            // 3D objects on top of the backdrop
+            if (sceneVb != null) {
+                pass.bindTexture("Sampler0", Sky3D.atlas().getGlTextureView(), Sky3D.atlas().getSampler());
+                pass.setVertexBuffer(0, sceneVb);
+                pass.setIndexBuffer(sceneIdx, quads.getIndexType());
+                pass.drawIndexed(0, 0, sceneCount, 1);
+            }
+        } finally {
+            if (sceneVb != null) sceneVb.close();
         }
     }
 
@@ -111,10 +143,13 @@ public final class Skybox {
     }
 
     private static void ensureTexture(int sky) {
-        if (loadedSky == sky || generating == sky) return;
-        generating = sky;
+        boolean want3d = LyricsConfig.get().sky3d;
+        int key = sky * 2 + (want3d ? 1 : 0);
+        if ((loadedSky == sky && loaded3d == want3d) || generating == key) return;
+        generating = key;
         SkyLibrary.Fn fn = SkyLibrary.ALL[sky].fn();
         CompletableFuture.supplyAsync(() -> {
+            SkyLibrary.threeD = want3d;
             int[] px = new int[FACE * 3 * FACE * 2];
             float[] d = new float[3];
             for (int face = 0; face < 6; face++) {
@@ -139,7 +174,7 @@ public final class Skybox {
             horizonRgb = (Math.round(r / 64) << 16) | (Math.round(g / 64) << 8) | Math.round(b / 64);
             return px;
         }, GEN).thenAccept(px -> MinecraftClient.getInstance().execute(() -> {
-            if (generating != sky) return;
+            if (generating != key) return;
             NativeImage img = new NativeImage(FACE * 3, FACE * 2, false);
             for (int y = 0; y < FACE * 2; y++) for (int x = 0; x < FACE * 3; x++) img.setColorArgb(x, y, px[y * FACE * 3 + x]);
             if (texture == null) {
@@ -150,6 +185,7 @@ public final class Skybox {
                 texture.upload();
             }
             loadedSky = sky;
+            loaded3d = want3d;
             generating = -1;
         }));
     }

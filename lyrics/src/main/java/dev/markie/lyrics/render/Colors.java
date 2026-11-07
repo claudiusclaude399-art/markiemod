@@ -49,8 +49,8 @@ public final class Colors {
     public static volatile int vanillaSky = 0x86A8E8;
 
     public static int skyRgb() {
-        if (dev.markie.lyrics.sky.Skybox.active()) return dev.markie.lyrics.sky.Skybox.horizonColor();
-        return vanillaSky;
+        int sky = dev.markie.lyrics.sky.Skybox.active() ? dev.markie.lyrics.sky.Skybox.horizonColor() : vanillaSky;
+        return EnvColors.tint(sky, 0.8f);
     }
 
     private static int saturate(int rgb, float k) {

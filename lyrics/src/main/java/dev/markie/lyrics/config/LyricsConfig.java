@@ -121,6 +121,10 @@ public class LyricsConfig {
     public boolean skySunMoon = false;
     public boolean skyFog = true;
     public boolean skyHideClouds = true;
+    public boolean sky3d = true;          // 3D planets, clouds, aurora curtains, shooting stars...
+    // Cover colours
+    public boolean coverEnv = true;       // tint the world with the album cover's main colour
+    public float coverEnvStrength = 0.7f; // 0 .. 1
 
     // HUD
     public boolean hud = true;
@@ -232,6 +236,7 @@ public class LyricsConfig {
         vfxAmount = clamp(vfxAmount, 0.25f, 2f);
         skyBrightness = clamp(skyBrightness, 0.3f, 1.5f);
         skySpin = clamp(skySpin, 0f, 3f);
+        coverEnvStrength = clamp(coverEnvStrength, 0f, 1f);
         if (sky < 0 || sky >= dev.markie.lyrics.sky.SkyLibrary.ALL.length) sky = 0;
         if (reveal == null) reveal = Reveal.WORD;
         size = clamp(size, 0.5f, 2f);

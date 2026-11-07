@@ -55,7 +55,9 @@ public final class LightShow {
             float faceYaw = (float) Math.atan2(cam.x - bx, cam.z - bz);
             float sway = (float) (Math.sin(t * 0.7 + i * 1.7) * 0.45 + Math.sin(t * 1.9 + i) * 0.12 * energy);
             // stage colours: the lyric/sky colours pushed to full saturation so beams read as coloured light
-            int base = switch (i % 3) { case 0 -> Colors.glow(); case 1 -> Colors.colorA(); default -> Colors.colorB(); };
+            int base = EnvColors.active()
+                ? (i % 2 == 0 ? EnvColors.main() : EnvColors.second())
+                : switch (i % 3) { case 0 -> Colors.glow(); case 1 -> Colors.colorA(); default -> Colors.colorB(); };
             float[] hsv = Colors.toHsv(base);
             float hue = hsv[1] < 0.15f ? (i * 0.13f + (float) (t * 0.01)) % 1f : hsv[0] + (i % 3 - 1) * 0.06f;
             int rgb = Colors.hsv(hue, 0.65f, 1f);

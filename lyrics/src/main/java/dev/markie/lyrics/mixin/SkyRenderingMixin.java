@@ -26,6 +26,8 @@ public class SkyRenderingMixin {
     /** Vanilla sky colour pulses with the beat too. */
     @ModifyVariable(method = "renderTopSky", at = @At("HEAD"), argsOnly = true, require = 0)
     private int markielyrics$pulseSky(int color) {
+        // album cover colours: the vanilla sky takes on the cover's hue
+        color = (color & 0xFF000000) | dev.markie.lyrics.render.EnvColors.tint(color & 0xFFFFFF, 0.8f);
         if (!LyricsConfig.get().reactSky) return color;
         float k = 1f + dev.markie.lyrics.music.MusicPulse.strength() * 0.18f * dev.markie.lyrics.music.MusicPulse.beat();
         if (k <= 1.001f) return color;

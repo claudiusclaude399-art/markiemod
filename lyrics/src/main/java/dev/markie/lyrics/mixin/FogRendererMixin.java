@@ -21,6 +21,11 @@ public class FogRendererMixin {
                                        CallbackInfoReturnable<Vector4f> cir) {
         if (world.getRegistryKey() != World.OVERWORLD || camera.getSubmersionType() != CameraSubmersionType.NONE) return;
         Vector4f v = cir.getReturnValue();
+        if (dev.markie.lyrics.render.EnvColors.active()) {
+            int fc = (Math.round(Math.min(1, v.x) * 255) << 16) | (Math.round(Math.min(1, v.y) * 255) << 8) | Math.round(Math.min(1, v.z) * 255);
+            int t = dev.markie.lyrics.render.EnvColors.tint(fc, 0.7f);
+            v.set(((t >> 16) & 255) / 255f, ((t >> 8) & 255) / 255f, (t & 255) / 255f, v.w);
+        }
         if (LyricsConfig.get().reactSky) {
             float k = 1f + dev.markie.lyrics.music.MusicPulse.strength() * 0.15f * dev.markie.lyrics.music.MusicPulse.beat();
             v.set(Math.min(1f, v.x * k), Math.min(1f, v.y * k), Math.min(1f, v.z * k), v.w);

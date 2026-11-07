@@ -248,7 +248,7 @@ public class LyricsScreen extends Screen {
         }
 
         Ui.text(ctx, Ui.t("Markie Lyrics"), px + 11, py + ph - 23, Ui.alpha(Ui.MUTED, alpha));
-        Ui.text(ctx, Ui.t("v1.7 · Right Shift"), px + 11, py + ph - 14, Ui.alpha(0xFF8E879C, alpha));
+        Ui.text(ctx, Ui.t("v1.8 · Right Shift"), px + 11, py + ph - 14, Ui.alpha(0xFF8E879C, alpha));
     }
 
     private void drawHeader(DrawContext ctx, float alpha) {
@@ -680,7 +680,10 @@ public class LyricsScreen extends Screen {
 
     private int skies(DrawContext ctx, int y, float a, float dt) {
         LyricsConfig c = LyricsConfig.get();
+        y = coverSection(ctx, y, a, dt);
+        y = section(ctx, "Skies", y, a);
         y = toggle(ctx, y, a, dt, "Custom sky", "Replace the overworld sky with one of these", () -> c.skyEnabled, v -> c.skyEnabled = v);
+        y = toggle(ctx, y, a, dt, "3D sky objects", "Real planets, moving clouds, aurora curtains, shooting stars", () -> c.sky3d, v -> c.sky3d = v);
         int cols = 3, gap = 5, cw = (contentW - gap * (cols - 1)) / cols, ch = Math.round(cw * 0.56f) + 12;
         for (int i = 0; i < SkyLibrary.ALL.length; i++) {
             int x = contentX + (i % cols) * (cw + gap);
@@ -728,6 +731,7 @@ public class LyricsScreen extends Screen {
 
     private int atmosphere(DrawContext ctx, int y, float a, float dt) {
         LyricsConfig c = LyricsConfig.get();
+        y = coverSection(ctx, y, a, dt);
         y = section(ctx, "React to music", y, a);
         y = toggle(ctx, y, a, dt, "React to music", "The world pulses and moves with the beat", () -> c.react, v -> c.react = v);
         if (c.react) {
@@ -778,6 +782,32 @@ public class LyricsScreen extends Screen {
         y = toggle(ctx, y, a, dt, "Pulse on new line", "The screen glows softly when each line starts", () -> c.linePulse, v -> c.linePulse = v);
         y = toggle(ctx, y, a, dt, "Cinematic bars", "Black bars top and bottom, like a music video", () -> c.cinemaBars, v -> c.cinemaBars = v);
         y = toggle(ctx, y, a, dt, "Only while music plays", "Fade everything out when the song is paused", () -> c.atmoOnlyMusic, v -> c.atmoOnlyMusic = v);
+        return y;
+    }
+
+    /** "Match the album cover": the world takes on the cover's main colours. */
+    private int coverSection(DrawContext ctx, int y, float a, float dt) {
+        LyricsConfig c = LyricsConfig.get();
+        y = section(ctx, "Album cover colours", y, a);
+        y = toggle(ctx, y, a, dt, "Match the cover", "Sky, fog, particles and lights take the cover's colours", () -> c.coverEnv, v -> c.coverEnv = v);
+        if (c.coverEnv) {
+            int h = 26;
+            Glass.card(ctx, contentX, y, contentW, h, 10, 0.2f, a);
+            Identifier cover = CoverArt.texture();
+            if (cover != null) {
+                ctx.drawTexture(RenderPipelines.GUI_TEXTURED, cover, contentX + 5, y + 4, 0, 0, 18, 18, 18, 18, 18, 18, Ui.alpha(0xFFFFFFFF, a));
+            }
+            boolean has = CoverArt.hasPalette();
+            Ui.text(ctx, Ui.t(has ? "Colours from this cover:" : "Waiting for a song with a cover…"), contentX + 28, y + 9, Ui.alpha(Ui.TEXT, a));
+            if (has) {
+                int sx = contentX + contentW - 60;
+                Glass.solid(ctx, sx, y + 6, 22, 14, 7, Ui.alpha(0xFF000000 | dev.markie.lyrics.render.EnvColors.main(), a));
+                Glass.solid(ctx, sx + 26, y + 6, 22, 14, 7, Ui.alpha(0xFF000000 | dev.markie.lyrics.render.EnvColors.second(), a));
+            }
+            y += h + 3;
+            y = slider(ctx, y, a, "Strength", "How strongly the world is tinted", Math.round(c.coverEnvStrength * 100) + "%",
+                c.coverEnvStrength, f -> c.coverEnvStrength = Math.round((float) f * 20f) / 20f);
+        }
         return y;
     }
 

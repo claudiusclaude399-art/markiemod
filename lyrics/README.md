@@ -15,6 +15,11 @@ Client-side only, so it works on any server.
   audio device such as Stereo Mix). On each beat the sky and fog pulse, particles swell and dance, a concert
   light show of coloured beams sweeps and flashes around you, the lyrics bounce, the screen edges glow, and
   (optional) the camera kicks. Live BPM meter in the Atmosphere tab
+- **The world matches the album cover:** the cover's main colours tint the sky, fog, custom skies, 3D sky objects,
+  particles, light show and (in Sky colour mode) the lyrics, fading smoothly when the song changes
+- **3D skies:** real objects in the sky, not just a picture: a lit ringed planet with a moon, waving aurora curtains,
+  layered nebula and galaxy clouds, a cloud layer that drifts past with parallax as you move, a 3D moon (the
+  Lavender Dusk crescent is real lighting), sun corona, shooting stars and hyperspace streaks
 - **3D lyrics:** letters have a solid 3D body in the world, plus Flip 3D and Tumble 3D pop-ins that turn words
   in real 3D so you see their depth
 - A smoothed song clock, so words never jitter when Spotify's position updates
@@ -49,7 +54,7 @@ Client-side only, so it works on any server.
 - **Preview mode** with a built-in demo song, so you can try every look without Spotify
 
 ## Using it
-1. Put `markielyrics-1.7.0.jar` and Fabric API in your `mods` folder.
+1. Put `markielyrics-1.8.0.jar` and Fabric API in your `mods` folder.
 2. In game press **Right Shift** (or type `/lyrics`) to open the menu.
 3. Play a song in the **Spotify desktop app**. That's it: by default (Source: **Auto**) the mod reads what the
    Spotify app on your computer is playing, with no login and no Premium needed

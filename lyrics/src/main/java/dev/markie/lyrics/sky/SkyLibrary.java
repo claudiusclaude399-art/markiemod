@@ -23,6 +23,9 @@ public final class SkyLibrary {
         new Sky("Lavender Dusk", SkyLibrary::lavender),
     };
 
+    /** When true, things that the 3D sky draws as real objects are left out of the painted backdrop. */
+    static volatile boolean threeD = true;
+
     private SkyLibrary() {}
 
     // ------------------------------------------------------------------ skies
@@ -47,7 +50,7 @@ public final class SkyLibrary {
         float e = elev(y);
         float[] c = grad(e, 0f, 0x0E2A3A, 0.4f, 0x081A2B, 1f, 0x030A14);
         add(c, rgb(0xFFFFFF), stars(x, y, z, 90, 0.25f, 3) * 0.7f);
-        if (y > 0) {
+        if (y > 0 && !threeD) {
             float a = (float) Math.atan2(x, z);
             float el = (float) Math.asin(Math.min(1, y));
             for (int k = 0; k < 2; k++) {
@@ -79,7 +82,7 @@ public final class SkyLibrary {
         float e = elev(y);
         float[] c = grad(e, 0f, 0xFF9A3D, 0.08f, 0xFF6B6B, 0.25f, 0xC2458C, 0.6f, 0x4B2A7A, 1f, 0x1E1440);
         sun(c, x, y, z, 0f, 0.06f, 1f, 0xFFD08A, 0xFF8A4A);
-        if (y > 0.01f && y < 0.35f) {
+        if (y > 0.01f && y < 0.35f && !threeD) {
             float cl = fbm(x * 2f, y * 11f, z * 2f, 5, 40);
             float a = smooth(0.52f, 0.72f, cl) * smooth(0.01f, 0.05f, y) * (1f - smooth(0.2f, 0.35f, y));
             blend(c, rgb(0x7A3A6A), a * 0.75f);
@@ -111,6 +114,7 @@ public final class SkyLibrary {
         float ml = (float) Math.sqrt(mx * mx + my * my + mz * mz);
         float ang = (float) Math.acos(Math.max(-1, Math.min(1, (x * mx + y * my + z * mz) / ml)));
         float r = 0.075f;
+        if (threeD) return below(c, y);
         if (ang < r) {
             float tex = fbm(x * 30, y * 30, z * 30, 4, 50);
             float[] moon = mul(rgb(0xD0303A), 0.7f + 0.4f * tex);
@@ -132,7 +136,7 @@ public final class SkyLibrary {
         float ul = (float) Math.sqrt(ux * ux + uz * uz); ux /= ul; uz /= ul;
         float vx = py * uz - pz * uy, vy = pz * ux - px * uz, vz = px * uy - py * ux;
         float w = x * px + y * py + z * pz;
-        if (w > 0.2f) {
+        if (w > 0.2f && !threeD) {
             float u = (x * ux + y * uy + z * uz) / w, v = (x * vx + y * vy + z * vz) / w;
             float R = 0.2f;
             float tilt = 0.35f;
@@ -167,7 +171,7 @@ public final class SkyLibrary {
         float ang = (float) Math.atan2(y, x);
         int bucket = (int) Math.floor((ang + Math.PI) * 120f / Math.PI);
         float h = hash(bucket, z > 0 ? 1 : 2, 0, 70);
-        if (h > 0.55f) {
+        if (h > 0.55f && !threeD) {
             float start = hash(bucket, 3, 0, 71) * 1.2f;
             float len = 0.15f + hash(bucket, 4, 0, 72) * 0.6f;
             float t = (theta - start) / len;
@@ -212,9 +216,11 @@ public final class SkyLibrary {
         float ol = (float) Math.sqrt(ox * ox + oy * oy + mz * mz);
         float a2 = (float) Math.acos(Math.max(-1, Math.min(1, (x * ox + y * oy + z * mz) / ol)));
         float r = 0.05f;
-        float moon = smooth(r, r * 0.9f, a1) * (1f - smooth(r * 0.95f, r * 0.85f, a2));
-        blend(c, rgb(0xFFF4E0), moon);
-        add(c, rgb(0xE0C0FF), (float) Math.exp(-Math.max(0, a1 - r) * 20f) * 0.3f);
+        if (!threeD) {
+            float moon = smooth(r, r * 0.9f, a1) * (1f - smooth(r * 0.95f, r * 0.85f, a2));
+            blend(c, rgb(0xFFF4E0), moon);
+            add(c, rgb(0xE0C0FF), (float) Math.exp(-Math.max(0, a1 - r) * 20f) * 0.3f);
+        }
         return below(c, y);
     }
 
@@ -230,7 +236,7 @@ public final class SkyLibrary {
 
     /** Clouds on a flat layer above you (perspective makes them bunch up at the horizon). */
     private static void clouds(float[] c, float x, float y, float z, int color, float strength, int seed) {
-        if (y <= 0.03f) return;
+        if (y <= 0.03f || threeD) return;
         float px = x / y, pz = z / y;
         float f = fbm(px * 0.45f, pz * 0.45f, 0.5f, 5, seed);
         float a = smooth(0.5f, 0.72f, f) * smooth(0.03f, 0.2f, y) * strength;

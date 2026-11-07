@@ -54,6 +54,7 @@ public final class MusicPulse {
         float dt = lastFrameNs == 0 ? 0 : Math.min(0.1f, (now - lastFrameNs) / 1e9f);
         if (dt <= 0.0005f && lastFrameNs != 0) return;
         lastFrameNs = now;
+        dev.markie.lyrics.render.EnvColors.update(dt);
 
         LyricsConfig c = LyricsConfig.get();
         NowPlaying np = SpotifyClient.current();

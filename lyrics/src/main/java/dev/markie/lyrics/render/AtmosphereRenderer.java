@@ -134,6 +134,7 @@ public final class AtmosphereRenderer {
                     }
                 }
                 if (pass == 0 && !halo) continue;
+                if (!c.atmoLyricColors) rgb = (k & 1) == 0 ? EnvColors.tint(rgb, 0.85f) : EnvColors.tint2(rgb, 0.85f);
 
                 // wrap into the box around the camera
                 double rx = wrap(px - cx, boxW), ry = wrap(py - cy, boxH), rz = wrap(pz - cz, boxW);
