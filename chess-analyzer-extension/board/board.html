@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Chess Coach – Offline Board</title>
+    <link rel="stylesheet" href="board.css" />
+  </head>
+  <body>
+    <main>
+      <section class="left">
+        <div class="board-wrap">
+          <div id="board"></div>
+          <div id="overlay"></div>
+        </div>
+        <div class="controls">
+          <button id="new">New game</button>
+          <button id="undo">Undo</button>
+          <button id="flip">Flip</button>
+          <label>Promote to
+            <select id="promo">
+              <option value="q">Queen</option>
+              <option value="r">Rook</option>
+              <option value="b">Bishop</option>
+              <option value="n">Knight</option>
+            </select>
+          </label>
+        </div>
+        <div class="fen">
+          <input id="fen" spellcheck="false" aria-label="FEN" />
+          <button id="load">Load FEN</button>
+          <button id="copy">Copy</button>
+        </div>
+        <div id="msg" class="msg"></div>
+      </section>
+      <aside id="panel-host"></aside>
+    </main>
+    <script src="../shared/miniboard.js"></script>
+    <script src="../shared/overlay.js"></script>
+    <script src="../shared/panel.js"></script>
+    <script type="module" src="board.js"></script>
+  </body>
+</html>

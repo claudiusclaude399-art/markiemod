@@ -1,0 +1,50 @@
+{
+  "manifest_version": 3,
+  "name": "Chess Coach – Move Tiers & Hints",
+  "short_name": "Chess Coach",
+  "version": "1.0.0",
+  "description": "Stockfish move tiers (Brilliant / Excellent / Good), step-by-step hints and line previews for chess.com analysis, bot games and an offline board.",
+  "permissions": ["offscreen", "storage"],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_title": "Chess Coach",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.chess.com/*"],
+      "js": ["content/page-bridge.js"],
+      "world": "MAIN",
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://www.chess.com/*"],
+      "js": [
+        "shared/allow.js",
+        "shared/miniboard.js",
+        "shared/overlay.js",
+        "shared/panel.js",
+        "content/content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+  }
+}
