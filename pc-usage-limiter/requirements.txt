@@ -1,0 +1,9 @@
+# Core app uses only the Python standard library (tkinter, winreg, etc.).
+# These are OPTIONAL but recommended for the best experience:
+
+pystray>=0.19.5      # system-tray icon + menu
+Pillow>=10.0.0       # icon image for the tray
+keyboard>=0.13.5     # stronger key blocking while locked (needs admin)
+
+# Build tool (only needed to create the .exe):
+pyinstaller>=6.0.0
