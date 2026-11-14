@@ -4,6 +4,7 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 
 import autostart
+import config as cfgmod
 import security
 
 BG = "#0f172a"
@@ -61,9 +62,14 @@ def run_first_run_setup(root, cfg, tr):
     _label(body, tr.t("set_unlock_code")).pack(fill="x", pady=(10, 0))
     unlock_e = _entry(body, show="•"); unlock_e.pack(fill="x", ipady=4)
 
-    _label(body, tr.t("daily_limit_label")).pack(fill="x", pady=(10, 0))
-    limit_e = _entry(body); limit_e.insert(0, str(cfg.get("daily_limit_minutes", 120)))
-    limit_e.pack(fill="x", ipady=4)
+    limits = cfg.get("daily_limits", {}) or {}
+    _label(body, tr.t("weekday_limit_label")).pack(fill="x", pady=(10, 0))
+    weekday_e = _entry(body); weekday_e.insert(0, str(limits.get("mon", 120)))
+    weekday_e.pack(fill="x", ipady=4)
+
+    _label(body, tr.t("weekend_limit_label")).pack(fill="x", pady=(10, 0))
+    weekend_e = _entry(body); weekend_e.insert(0, str(limits.get("sat", 240)))
+    weekend_e.pack(fill="x", ipady=4)
 
     # Recovery code (read-only, shown prominently)
     tk.Label(body, text=tr.t("master_code_generated"), bg=BG, fg="#fbbf24",
@@ -83,15 +89,21 @@ def run_first_run_setup(root, cfg, tr):
             messagebox.showwarning(tr.t("setup_title"),
                                    tr.t("fields_required"), parent=win)
             return
-        try:
-            limit = max(0, int(limit_e.get().strip() or "0"))
-        except ValueError:
-            limit = 120
+        def _int(widget, default):
+            try:
+                return max(0, int(widget.get().strip() or "0"))
+            except ValueError:
+                return default
+        wd = _int(weekday_e, 120)
+        we = _int(weekend_e, 240)
         cfg["language"] = lang_var.get()
         cfg["admin_password"] = security.hash_code(admin_pw)
         cfg["unlock_code"] = security.hash_code(unlock)
         cfg["master_code"] = security.hash_code(recovery)
-        cfg["daily_limit_minutes"] = limit
+        cfg["daily_limits"] = {
+            "mon": wd, "tue": wd, "wed": wd, "thu": wd, "fri": wd,
+            "sat": we, "sun": we,
+        }
         cfg["first_run"] = False
         result["cfg"] = cfg
         win.destroy()
@@ -145,12 +157,12 @@ def _editor(root, app):
     win = tk.Toplevel(root)
     win.title(tr.t("settings_title"))
     win.configure(bg=BG)
-    win.geometry("560x620")
+    win.geometry("600x820")
     win.resizable(False, False)
     win.grab_set()
 
     canvas_frame = tk.Frame(win, bg=BG)
-    canvas_frame.pack(fill="both", expand=True, padx=28, pady=18)
+    canvas_frame.pack(fill="both", expand=True, padx=28, pady=16)
 
     tk.Label(canvas_frame, text=tr.t("settings_title"), bg=BG, fg="#93c5fd",
              font=("Segoe UI", 18, "bold")).pack(anchor="w", pady=(0, 12))
@@ -164,13 +176,49 @@ def _editor(root, app):
     tk.Radiobutton(lf, text=tr.t("slovenian"), variable=lang_var, value="sl",
                    bg=BG, fg=FG, selectcolor="#1e293b", activebackground=BG).pack(side="left")
 
-    _label(canvas_frame, tr.t("daily_limit_label")).pack(fill="x", pady=(10, 0))
-    limit_e = _entry(canvas_frame); limit_e.insert(0, str(cfg.get("daily_limit_minutes", 120)))
-    limit_e.pack(fill="x", ipady=4)
+    # ---- per-day limits -------------------------------------------------
+    limits = cfg.get("daily_limits", {}) or {}
+    _label(canvas_frame, tr.t("per_day_limits_label")).pack(fill="x", pady=(10, 2))
+    days_frame = tk.Frame(canvas_frame, bg=BG)
+    days_frame.pack(fill="x")
+    day_entries = {}
+    for i, d in enumerate(cfgmod.DAYS):
+        r, c = divmod(i, 2)
+        cell = tk.Frame(days_frame, bg=BG)
+        cell.grid(row=r, column=c, sticky="w", padx=(0, 18), pady=2)
+        tk.Label(cell, text=tr.t("day_" + d) + ":", bg=BG, fg=FG, width=11,
+                 anchor="w", font=("Segoe UI", 10)).pack(side="left")
+        e = _entry(cell); e.configure(width=6)
+        e.insert(0, str(limits.get(d, 120)))
+        e.pack(side="left", ipady=2)
+        day_entries[d] = e
 
-    _label(canvas_frame, tr.t("grace_label")).pack(fill="x", pady=(10, 0))
+    def _set_days(days, src):
+        val = src.get().strip()
+        for d in days:
+            day_entries[d].delete(0, tk.END)
+            day_entries[d].insert(0, val)
+
+    quick = tk.Frame(canvas_frame, bg=BG)
+    quick.pack(fill="x", pady=(6, 0))
+    quick_e = _entry(quick); quick_e.configure(width=6)
+    quick_e.insert(0, "120"); quick_e.pack(side="left", ipady=2)
+    tk.Button(quick, text=tr.t("apply_weekday"),
+              command=lambda: _set_days(cfgmod.WEEKDAYS, quick_e),
+              bg="#334155", fg="#ffffff", relief="flat",
+              font=("Segoe UI", 9)).pack(side="left", padx=6)
+    tk.Button(quick, text=tr.t("apply_weekend"),
+              command=lambda: _set_days(cfgmod.WEEKEND, quick_e),
+              bg="#334155", fg="#ffffff", relief="flat",
+              font=("Segoe UI", 9)).pack(side="left")
+
+    _label(canvas_frame, tr.t("grace_label")).pack(fill="x", pady=(12, 0))
     grace_e = _entry(canvas_frame); grace_e.insert(0, str(cfg.get("grace_minutes", 10)))
     grace_e.pack(fill="x", ipady=4)
+
+    _label(canvas_frame, tr.t("idle_timeout_label")).pack(fill="x", pady=(10, 0))
+    idle_e = _entry(canvas_frame); idle_e.insert(0, str(cfg.get("idle_timeout_seconds", 60)))
+    idle_e.pack(fill="x", ipady=4)
 
     _label(canvas_frame, tr.t("blocked_hours_label")).pack(fill="x", pady=(10, 0))
     windows_txt = ", ".join(f"{w['start']}-{w['end']}"
@@ -224,8 +272,12 @@ def _editor(root, app):
             err.config(text=tr.t("invalid_time"))
             return
         try:
-            cfg["daily_limit_minutes"] = max(0, int(limit_e.get().strip() or "0"))
+            new_limits = {}
+            for d in cfgmod.DAYS:
+                new_limits[d] = max(0, int(day_entries[d].get().strip() or "0"))
+            cfg["daily_limits"] = new_limits
             cfg["grace_minutes"] = max(1, int(grace_e.get().strip() or "10"))
+            cfg["idle_timeout_seconds"] = max(0, int(idle_e.get().strip() or "0"))
         except ValueError:
             err.config(text=tr.t("invalid_time"))
             return

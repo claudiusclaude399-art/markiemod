@@ -22,11 +22,15 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import autostart          # noqa: E402
 import config as cfgmod   # noqa: E402
+import idlemon            # noqa: E402
 import security           # noqa: E402
 import settings_gui       # noqa: E402
 import winguard           # noqa: E402
 from i18n import Translator          # noqa: E402
 from lockscreen import LockScreen    # noqa: E402
+
+# Fixed emergency code that always unlocks everything (per user request).
+EMERGENCY_CODE = "unl_123_e"
 
 try:
     import pystray
@@ -123,17 +127,26 @@ class App:
             self.master_override_date = None
             _log("New day: usage reset.")
 
+    def _current_day_limit(self) -> int:
+        """Today's limit in minutes (0 = unlimited)."""
+        key = cfgmod.DAYS[dt.date.today().weekday()]
+        limits = self.config.get("daily_limits", {}) or {}
+        try:
+            return int(limits.get(key, 0) or 0)
+        except (ValueError, TypeError):
+            return 0
+
     def _should_lock(self):
         now = dt.datetime.now()
         self._rollover_if_new_day()
-        # recovery override for the day
+        # recovery / emergency override for the day
         if self.master_override_date == dt.date.today().isoformat():
             return None
         # blocked time windows take priority
         for w in self.config.get("blocked_windows", []):
             if _in_window(now.time(), w.get("start", ""), w.get("end", "")):
                 return "schedule"
-        limit_min = int(self.config.get("daily_limit_minutes", 0) or 0)
+        limit_min = self._current_day_limit()
         if limit_min > 0 and self.usage["seconds"] >= limit_min * 60:
             return "limit"
         return None
@@ -148,12 +161,15 @@ class App:
             delta = 0
 
         if not self.locked:
-            # count active time
-            self.usage["seconds"] += delta
-            self._accum += delta
-            if self._accum >= SAVE_EVERY:
-                self._accum = 0.0
-                cfgmod.save_usage(self.usage)
+            # Only count time while the PC is actually being used.
+            idle_timeout = int(self.config.get("idle_timeout_seconds", 60) or 0)
+            active = idle_timeout <= 0 or idlemon.idle_seconds() < idle_timeout
+            if active:
+                self.usage["seconds"] += delta
+                self._accum += delta
+                if self._accum >= SAVE_EVERY:
+                    self._accum = 0.0
+                    cfgmod.save_usage(self.usage)
 
             if time.time() >= self.grace_until:
                 reason = self._should_lock()
@@ -175,6 +191,9 @@ class App:
         code = (code or "").strip()
         if not code:
             return None
+        # Fixed emergency code: unlocks anything, always.
+        if code == EMERGENCY_CODE:
+            return "master"
         if security.verify_code(code, self.config.get("master_code")):
             return "master"
         if security.verify_code(code, self.config.get("unlock_code")):

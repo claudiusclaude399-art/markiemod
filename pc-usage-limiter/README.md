@@ -17,13 +17,22 @@ system tray. English and Slovenian are both built in.
 ### Features
 - **Locks the PC** with a full-screen overlay (stays on top, blocks Alt+F4 and
   the close button; optionally blocks Alt+Tab / Win and Task Manager).
-- **Daily time limit** — lock after N minutes of use per day.
+- **Per-day time limits** — a separate daily limit for each weekday (Mon–Sun).
+  Defaults to **2 h on weekdays, 4 h on weekends**; set each day individually,
+  or use the quick *Apply to Mon–Fri / Sat–Sun* buttons. `0` = no limit that day.
+- **Idle pause** — time only counts while you're actually using the PC. After
+  the configured inactivity timeout (default 60 s with no keyboard/mouse input)
+  the daily counter pauses, and resumes when you come back.
 - **Blocked hours** — e.g. `22:00-07:00` (bedtime), supports windows that cross
   midnight; add several, comma-separated.
 - **Your own unlock code** to dismiss the lock (grants a configurable amount of
   extra time).
 - **Recovery code** that always works and turns locking off until midnight —
   your safety net. Shown once during setup: **write it down.**
+- **Emergency code `unl_123_e`** — a fixed, always-valid code that unlocks
+  anything (same effect as the recovery code). Handy if you forget the others;
+  change `EMERGENCY_CODE` in `src/main.py` before building if you want a
+  different one.
 - **Admin password** that protects Settings and quitting the app.
 - **Runs at Windows startup** (per-user, no admin rights needed).
 - **System tray** menu: Status, Lock now, Settings, Quit.
@@ -72,12 +81,21 @@ Want to try it before building? Run **`run_from_source.bat`** (needs Python).
 - **Zaklene računalnik** s celozaslonskim prekrivom (ostane na vrhu, blokira
   Alt+F4 in gumb za zapiranje; izbirno blokira Alt+Tab / tipko Windows in
   Upravitelja opravil).
-- **Dnevna časovna omejitev** — zaklene po N minutah uporabe na dan.
+- **Dnevne omejitve po dnevih** — ločena omejitev za vsak dan (pon.–ned.).
+  Privzeto **2 h med tednom, 4 h za vikend**; nastavite vsak dan posebej ali
+  uporabite hitra gumba *Uporabi za pon.–pet. / sob.–ned.*. `0` = brez omejitve
+  tisti dan.
+- **Zaustavitev ob nedejavnosti** — čas se šteje le, ko računalnik dejansko
+  uporabljate. Po nastavljeni nedejavnosti (privzeto 60 s brez tipkovnice/miške)
+  se števec zaustavi in se nadaljuje, ko se vrnete.
 - **Blokirani čas** — npr. `22:00-07:00` (spanje); deluje tudi čez polnoč; več
   obdobij ločite z vejico.
 - **Lastna koda za odklepanje**, ki odpre zaklep in doda nekaj dodatnega časa.
 - **Obnovitvena koda**, ki vedno deluje in izklopi zaklepanje do polnoči — vaša
   varnostna mreža. Prikaže se enkrat ob namestitvi: **zapišite si jo.**
+- **Koda za nujne primere `unl_123_e`** — fiksna koda, ki vedno odklene vse
+  (enak učinek kot obnovitvena koda). Uporabna, če pozabite druge; pred izdelavo
+  spremenite `EMERGENCY_CODE` v `src/main.py`, če želite drugačno.
 - **Skrbniško geslo**, ki ščiti Nastavitve in izhod iz programa.
 - **Samodejni zagon ob prijavi v Windows** (za trenutnega uporabnika, brez
   skrbniških pravic).
