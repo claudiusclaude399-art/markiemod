@@ -40,7 +40,23 @@ system tray. English and Slovenian are both built in.
 - Codes/passwords are stored only as salted **PBKDF2-SHA256 hashes**, never in
   plain text.
 
-### Build the .exe (on Windows)
+### Instant setup (recommended)
+
+**Option A — download the ready-made app (no Python, no building):**
+1. Open the repo's **Releases** page → release **"PC Usage Limiter (latest build)"**.
+2. Download **`PCUsageLimiter.exe`** and double-click it.
+   (SmartScreen may warn about the unsigned app → **More info → Run anyway**.)
+3. The setup wizard opens. To also start it with Windows, drop the exe into your
+   Startup folder: press `Win+R`, type `shell:startup`, Enter, and copy the exe
+   there. (Or run `install.bat` from the source download.)
+
+**Option B — one double-click does everything:**
+Download the source (green **Code → Download ZIP**), unzip, open
+`pc-usage-limiter`, and double-click **`SETUP.bat`**. It installs Python
+automatically if needed, builds the exe, sets it to start with Windows, and
+launches the setup wizard. Nothing else to do.
+
+### Build the .exe manually (on Windows)
 1. Install [Python 3](https://www.python.org/downloads/) and tick
    *"Add Python to PATH"*.
 2. Double-click **`build.bat`**. It installs the dependencies and produces
@@ -104,7 +120,23 @@ Want to try it before building? Run **`run_from_source.bat`** (needs Python).
 - Kode in gesla so shranjena le kot soljeni **PBKDF2-SHA256 povzetki**, nikoli v
   navadnem besedilu.
 
-### Izdelava .exe (v sistemu Windows)
+### Takojšnja namestitev (priporočeno)
+
+**Možnost A — prenesite že pripravljen program (brez Pythona, brez izdelave):**
+1. Odprite stran **Releases** repozitorija → izdaja **"PC Usage Limiter (latest build)"**.
+2. Prenesite **`PCUsageLimiter.exe`** in ga dvokliknite.
+   (SmartScreen lahko opozori na nepodpisan program → **More info → Run anyway**.)
+3. Odpre se čarovnik za namestitev. Za samodejni zagon ob zagonu sistema
+   pritisnite `Win+R`, vnesite `shell:startup`, Enter in kopirajte exe tja.
+   (Ali zaženite `install.bat` iz prenosa izvorne kode.)
+
+**Možnost B — vse z enim dvoklikom:**
+Prenesite izvorno kodo (zeleni gumb **Code → Download ZIP**), razširite, odprite
+mapo `pc-usage-limiter` in dvokliknite **`SETUP.bat`**. Po potrebi samodejno
+namesti Python, izdela exe, ga nastavi za zagon ob zagonu sistema Windows in
+zažene čarovnika. Nič drugega ni treba.
+
+### Ročna izdelava .exe (v sistemu Windows)
 1. Namestite [Python 3](https://www.python.org/downloads/) in obkljukajte
    *"Add Python to PATH"*.
 2. Dvokliknite **`build.bat`**. Namesti odvisnosti in ustvari
