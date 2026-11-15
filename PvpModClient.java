@@ -1,5 +1,6 @@
 package dev.pvpmod;
 
+import dev.pvpmod.analyzer.AnalyzerClient;
 import dev.pvpmod.config.PvpConfig;
 import dev.pvpmod.gui.MainScreen;
 import net.fabricmc.api.ClientModInitializer;
@@ -11,6 +12,7 @@ public class PvpModClient implements ClientModInitializer {
     @Override
     public void onInitializeClient() {
         PvpConfig.load();
+        AnalyzerClient.init();
 
         // /pvpmod opens the settings screen (queued so the chat screen doesn't close it again)
         ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) ->

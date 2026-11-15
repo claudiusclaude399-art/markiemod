@@ -3,14 +3,22 @@
   "id": "pvpmod",
   "version": "${version}",
   "name": "PvP Mod",
-  "description": "Client-side PvP visuals: item sizes, totem pop, end crystal style, particle control.",
-  "authors": ["you"],
+  "description": "Client-side PvP visuals plus a 1v1 fight analyzer: records your fights and flags reach, killaura, aim assist, autoclicker, anti-knockback, speed, flight, auto totem and crystal aura.",
+  "authors": [
+    "you"
+  ],
   "license": "MIT",
   "environment": "client",
   "entrypoints": {
-    "client": ["dev.pvpmod.PvpModClient"]
+    "client": [
+      "dev.pvpmod.PvpModClient"
+    ]
   },
-  "mixins": ["pvpmod.mixins.json", "pvpmod.tint.mixins.json"],
+  "mixins": [
+    "pvpmod.mixins.json",
+    "pvpmod.tint.mixins.json",
+    "pvpmod.analyzer.mixins.json"
+  ],
   "depends": {
     "fabricloader": ">=0.18.0",
     "minecraft": "~1.21.11",

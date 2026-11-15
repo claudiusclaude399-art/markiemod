@@ -48,6 +48,15 @@ public class PvpConfig {
     public float particleDensity = 1.0f;                                  // global quantity 0..1
     public Map<String, Float> particleDensities = new HashMap<>();       // per-type quantity 0..1
 
+    // Fight analyzer
+    public boolean analyzerEnabled = true;
+    public boolean analyzerHud = true;
+    public boolean analyzerSave = true;
+    public boolean analyzerChat = true;
+    public float analyzerSensitivity = 1.0f;   // 0.8 strict .. 1.3 relaxed
+    public int analyzerTimeout = 20;           // seconds without hits before a fight ends
+    public int analyzerMaxFights = 50;
+
     public static PvpConfig get() { return instance; }
 
     public static void load() {

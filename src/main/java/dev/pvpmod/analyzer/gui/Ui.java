@@ -1,0 +1,66 @@
+package dev.pvpmod.analyzer.gui;
+
+import dev.pvpmod.glass.Col;
+import dev.pvpmod.glass.Glass;
+import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.gui.PlayerSkinDrawer;
+import net.minecraft.client.network.PlayerListEntry;
+import net.minecraft.client.util.DefaultSkinHelper;
+import net.minecraft.entity.player.SkinTextures;
+
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.UUID;
+
+/** Small shared helpers for the analyzer screens. */
+final class Ui {
+    private Ui() {}
+
+    static String time(float ticks) {
+        float sec = Math.max(0, ticks) / 20f;
+        int m = (int) (sec / 60);
+        float s = sec - m * 60;
+        return String.format("%d:%04.1f", m, s);
+    }
+
+    static String duration(int ticks) {
+        int sec = ticks / 20;
+        return sec >= 60 ? (sec / 60) + "m " + (sec % 60) + "s" : sec + "s";
+    }
+
+    static String date(long epoch) {
+        return new SimpleDateFormat("d MMM, HH:mm").format(new Date(epoch));
+    }
+
+    static SkinTextures skin(String uuid) {
+        UUID id;
+        try { id = UUID.fromString(uuid); } catch (Exception e) { return DefaultSkinHelper.getSteve(); }
+        MinecraftClient mc = MinecraftClient.getInstance();
+        if (mc.getNetworkHandler() != null) {
+            PlayerListEntry e = mc.getNetworkHandler().getPlayerListEntry(id);
+            if (e != null) return e.getSkinTextures();
+        }
+        return DefaultSkinHelper.getSkinTextures(id);
+    }
+
+    /** Player head inside a rounded glass frame. */
+    static void head(String uuid, float x, float y, int size) {
+        Glass.shadow(x, y, size, size, size * 0.28f, 5, Col.a(0, 0.35f));
+        Glass.round(x - 1, y - 1, size + 2, size + 2, size * 0.28f, Col.a(0xFFFFFF, 0.18f));
+        PlayerSkinDrawer.draw(Glass.ctx(), skin(uuid), Math.round(x), Math.round(y), size);
+        Glass.rim(x - 1, y - 1, size + 2, size + 2, size * 0.28f, Col.a(0xFFFFFF, 0.5f), Col.a(0xFFFFFF, 0.12f));
+    }
+
+    /** Tiny line chart of 0..100 values. */
+    static void sparkline(float[] v, float x, float y, float w, float h, int rgb) {
+        if (v == null || v.length < 2) return;
+        float px = x, py = y + h - h * Math.min(100, v[0]) / 100f;
+        for (int i = 1; i < v.length; i++) {
+            float nx = x + w * i / (v.length - 1f), ny = y + h - h * Math.min(100, v[i]) / 100f;
+            Glass.rectGradient(nx - w / (v.length - 1f), Math.min(py, ny), w / (v.length - 1f), y + h - Math.min(py, ny), Col.a(rgb, 0.25f), Col.a(rgb, 0f));
+            Glass.line(px, py, nx, ny, 1.3f, Col.a(rgb, 1f));
+            px = nx;
+            py = ny;
+        }
+    }
+}
