@@ -213,8 +213,8 @@ public class FightReportScreen extends GlassScreen {
         Glass.ring(rcx, rcy, r, r * 0.20f, Col.a(0xFFFFFF, 0.10f));
         Glass.arc(rcx, rcy, r, r * 0.20f, 0, 360 * score / 100f * fill, Col.a(col, 1f));
         String pct = Math.round(score * fill) + "%";
-        GFont.drawCentered(pct, rcx, rcy - r * 0.32f, r * 0.55f, Col.LABEL, true);
-        GFont.drawCentered("suspicion", rcx, rcy + r * 0.22f, 7, Col.LABEL3, false);
+        GFont.drawCentered(pct, rcx, rcy - r * 0.42f, r * 0.55f, Col.LABEL, true);
+        GFont.drawCentered("suspicion", rcx, rcy + r * 0.30f, 7, Col.LABEL3, false);
         GFont.drawCentered(Analyzer.verdict(score), rcx, rcy + r + 12, 11, Col.a(col, 1f), true);
         int triggered = 0;
         for (CheckType c : CheckType.values()) if (an.flagCount(c) > 0) triggered++;
@@ -235,8 +235,13 @@ public class FightReportScreen extends GlassScreen {
             for (int i = 0; i < stats.length; i++) {
                 float tx = x + (i % 2) * (tw + 6), tyy = ty + (i / 2) * (th + 3);
                 card(tx, tyy, tw, th);
-                GFont.draw(GFont.fit(stats[i][0], tw - 14, 6.5f, false), tx + 8, tyy + 5, 6.5f, Col.LABEL3, false);
-                GFont.draw(stats[i][1], tx + 8, tyy + th - 15, Math.min(11, th * 0.35f), Col.LABEL, true);
+                if (th >= 30) {
+                    GFont.draw(GFont.fit(stats[i][0], tw - 14, 6.5f, false), tx + 8, tyy + 5, 6.5f, Col.LABEL3, false);
+                    GFont.draw(stats[i][1], tx + 8, tyy + th - 15, Math.min(11, th * 0.35f), Col.LABEL, true);
+                } else {
+                    float vw = GFont.drawRight(stats[i][1], tx + tw - 8, tyy + (th - 8) / 2f, 8, Col.LABEL, true);
+                    GFont.draw(GFont.fit(stats[i][0], tw - vw - 20, 6.5f, false), tx + 8, tyy + (th - 6.5f) / 2f, 6.5f, Col.LABEL2, false);
+                }
             }
         }
 
@@ -258,8 +263,13 @@ public class FightReportScreen extends GlassScreen {
             if (hov) Glass.round(rx + 6, yy - 1, rw - 12, rowH, 8, Col.a(0xFFFFFF, 0.06f));
             Glass.dot(rx + 20, yy + rowH / 2 - 1, 7, Col.a(c.color, 0.9f * dim));
             GFont.drawCentered(c.letter, rx + 20, yy + rowH / 2 - 4.6f, 7, Col.a(0xFFFFFF, dim), true);
-            GFont.draw(c.title, rx + 33, yy + rowH / 2 - 8, 8.5f, Col.a(0xFFFFFF, dim), true);
-            GFont.draw(n == 0 ? "clean" : n + (n == 1 ? " flag" : " flags"), rx + 33, yy + rowH / 2 + 2, 6.5f, Col.a(0xEBEBF5, 0.55f * dim), false);
+            if (rowH >= 25) {
+                GFont.draw(c.title, rx + 33, yy + rowH / 2 - 8, 8.5f, Col.a(0xFFFFFF, dim), true);
+                GFont.draw(n == 0 ? "clean" : n + (n == 1 ? " flag" : " flags"), rx + 33, yy + rowH / 2 + 2, 6.5f, Col.a(0xEBEBF5, 0.55f * dim), false);
+            } else {
+                float tw2 = GFont.draw(c.title, rx + 33, yy + rowH / 2 - 4.5f, 8, Col.a(0xFFFFFF, dim), true);
+                if (n > 0) GFont.draw("×" + n, rx + 37 + tw2, yy + rowH / 2 - 3.5f, 6.5f, Col.a(0xEBEBF5, 0.55f), false);
+            }
             float bx = rx + Math.max(120, rw * 0.42f), bw = rx + rw - 50 - bx;
             Spring bar = spring("bar" + c.name(), 0f, 90f, 14f);
             if (age > i * 0.05f) bar.to(s / 100f);
@@ -360,6 +370,13 @@ public class FightReportScreen extends GlassScreen {
                 setTab(2);
             }
         }
+        if (second != null) {
+            float lx = x + w - 12 - GFont.width("them   you", 6.5f, true) - 14;
+            Glass.dot(lx, py + 4, 2.5f, Col.a(rgb, 1f));
+            float tw0 = GFont.draw("them", lx + 5, py + 1, 6.5f, Col.LABEL2, true);
+            Glass.dot(lx + tw0 + 12, py + 4, 2.5f, Col.a(Col.CYAN, 1f));
+            GFont.draw("you", lx + tw0 + 17, py + 1, 6.5f, Col.LABEL2, true);
+        }
         GFont.draw("0:00", px, py + ph + 4, 6, Col.LABEL3, false);
         GFont.drawRight(Ui.time(n), px + pw, py + ph + 4, 6, Col.LABEL3, false);
     }
@@ -375,7 +392,7 @@ public class FightReportScreen extends GlassScreen {
                 float x = px + pw * i / (n - 1f);
                 if (x > px + drawW) break;
                 float y = py + ph * (1 - Math.min(max, v) / max);
-                Glass.rect(x - 0.5f, y, 1f, py + ph - y, Col.a(rgb, 0.25f));
+                Glass.rect(x - 0.4f, y, 0.8f, py + ph - y, Col.a(rgb, 0.12f));
                 Glass.dot(x, y, 2.2f, Col.a(v > Analyzer.REACH_LIMIT + 0.12 ? Col.RED : 0xFFFFFF, 1f));
             }
             return;
@@ -459,14 +476,14 @@ public class FightReportScreen extends GlassScreen {
             GFont.draw("to the next suspicious moment.", x + 12, yy + 21, 7, Col.LABEL3, false);
         }
         for (Flag f : near) {
-            float ch = 58;
+            float ch = 46;
             if (yy + ch > y + h - 4) break;
             boolean sel = f == selected;
             Glass.round(x + 8, yy, w - 16, ch, 12, Col.a(f.c.color, sel ? 0.20f : 0.10f), Col.a(f.c.color, sel ? 0.10f : 0.04f));
             Glass.rim(x + 8, yy, w - 16, ch, 12, Col.a(f.c.color, sel ? 0.8f : 0.4f), Col.a(f.c.color, 0.15f));
             chip(f.c.title, x + 14, yy + 6, f.c.color);
             GFont.drawRight(Ui.time(f.t), x + w - 14, yy + 8, 7, Col.LABEL2, true);
-            wrap(f.d, x + 14, yy + 22, w - 28, 7.5f, Col.LABEL, true, 2);
+            wrap(f.d, x + 14, yy + 21, w - 28, 7.5f, Col.LABEL, true, 2);
             Glass.round(x + 14, yy + ch - 10, w - 28, 3, 1.5f, Col.a(0xFFFFFF, 0.1f));
             Glass.round(x + 14, yy + ch - 10, Math.max(3, (w - 28) * f.sev), 3, 1.5f, Col.a(f.c.color, 1f));
             if (clicked(x + 8, yy, w - 16, ch)) { selected = f; playhead = Math.max(0, f.t - 12); playing = true; }

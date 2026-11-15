@@ -166,7 +166,7 @@ final class ReplayView {
             float near = Math.abs(f.t - ph);
             boolean sel = f == selected;
             if (near > 200 && !sel) continue;
-            float[] p = project(f.x, f.y + 2.35, f.z);
+            float[] p = project(f.x, f.y + 2.9, f.z);
             float[] base = project(f.x, f.y + 0.1, f.z);
             if (p == null) continue;
             float pulse = 0.5f + 0.5f * (float) Math.sin(Glass.time * 6 + f.t);
@@ -223,7 +223,7 @@ final class ReplayView {
 
         // players
         drawPlayer(me, Col.CYAN, "You", mode != EYES);
-        drawPlayer(op, Col.RED, rec.opName, mode != EYES);
+        if (mode != EYES) drawPlayer(op, Col.RED, rec.opName, true);
 
         if (mode == EYES) {
             float cxs = x + w / 2, cys = y + h / 2;

@@ -16,6 +16,10 @@ the rest of the mod still loads.
 
 ## Fight Analyzer (1v1 anti-cheat)
 
+![Overview](docs/overview.jpg)
+![Replay](docs/replay.jpg)
+![Graphs](docs/graphs.jpg)
+
 Press **J** (or `/pvpmod fights`, or the "Fight Analyzer" button in `/pvpmod`) to open it.
 Every 1v1 is recorded automatically: the recording starts the first time you hit a player or a player hits
 you, and stops when someone dies, they leave, or nobody hits for 20 seconds (changeable in Settings).

@@ -55,9 +55,13 @@ final class Ui {
     static void sparkline(float[] v, float x, float y, float w, float h, int rgb) {
         if (v == null || v.length < 2) return;
         float px = x, py = y + h - h * Math.min(100, v[0]) / 100f;
+        float seg = w / (v.length - 1f);
         for (int i = 1; i < v.length; i++) {
             float nx = x + w * i / (v.length - 1f), ny = y + h - h * Math.min(100, v[i]) / 100f;
-            Glass.rectGradient(nx - w / (v.length - 1f), Math.min(py, ny), w / (v.length - 1f), y + h - Math.min(py, ny), Col.a(rgb, 0.25f), Col.a(rgb, 0f));
+            for (int k = 0; k < 4; k++) {
+                float cy = py + (ny - py) * (k + 0.5f) / 4f;
+                Glass.rectGradient(px + seg * k / 4f, cy, seg / 4f + 0.01f, y + h - cy, Col.a(rgb, 0.22f), Col.a(rgb, 0f));
+            }
             Glass.line(px, py, nx, ny, 1.3f, Col.a(rgb, 1f));
             px = nx;
             py = ny;

@@ -377,6 +377,14 @@ public final class Analyzer {
     // ------------------------------------------------------------------ movement
     private void tickSpeed(int t, PState op) {
         PState prev = op(t - 1);
+        PState back = op(t - 6);
+        if (op != null && back != null) {
+            double dx = op.x - back.x, dz = op.z - back.z;
+            double v = Math.sqrt(dx * dx + dz * dz) / 6.0;
+            speed.add(v > 3 ? Float.NaN : (float) (v * 20));
+        } else {
+            speed.add(Float.NaN);
+        }
         boolean exempt = op == null || prev == null
             || op.has(PState.GLIDE | PState.VEHICLE | PState.FLUID | PState.CREATIVE)
             || t - opHurtTick < 30;
@@ -388,7 +396,6 @@ public final class Analyzer {
         }
         if (exempt) {
             speedWindow.clear();
-            speed.add(op == null ? Float.NaN : (float) Math.min(40, dh * 20));
             return;
         }
         speedWindow.addLast(dh);
@@ -396,7 +403,6 @@ public final class Analyzer {
         double avg = 0;
         for (double d : speedWindow) avg += d;
         avg /= speedWindow.size();
-        speed.add((float) (avg * 20));
         if (speedWindow.size() == 10 && avg > 0.56 * sens) {
             float sev = (float) clamp(0.3 + (avg - 0.56) / 0.4, 0.3, 1.0);
             flag(t, CheckType.SPEED, sev, avg * 20, String.format("Moving %.1f blocks/s (sprint-jump is ~7)", avg * 20), op, 40);
