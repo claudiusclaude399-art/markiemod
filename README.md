@@ -55,5 +55,5 @@ Fights are saved in `.minecraft/pvpmod/fights` (gzip JSON, the newest 50 are kep
 lag spikes and server plugins (custom knockback, custom reach) can cause flags, so use Sensitivity in Settings
 (Strict / Normal / Relaxed) and watch the replay before reporting someone.
 
-The UI uses the Inter font (SIL Open Font License, see `src/main/resources/assets/pvpmod/font/INTER-LICENSE.txt`).
+The UI uses the Inter font (SIL Open Font License, see `src/main/resources/assets/pvpmod/font/inter_license.txt`).
 New code lives in `src/main/java/dev/pvpmod/analyzer` and `src/main/java/dev/pvpmod/glass` (the glass UI toolkit).
