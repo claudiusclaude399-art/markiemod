@@ -1,0 +1,30 @@
+name: AdminGuard
+version: '${version}'
+main: dev.markiemod.adminguard.AdminGuardPlugin
+api-version: '1.21'
+description: Anti admin abuse. Powerful commands need a PIN, a confirmation or approval from another staff member, with a full audit log.
+authors: [markiemod]
+commands:
+  adminguard:
+    description: Open the AdminGuard menu or run an AdminGuard command.
+    usage: /ag help
+    aliases: [ag, aguard]
+permissions:
+  adminguard.use:
+    description: Open /ag and set a PIN.
+    default: op
+  adminguard.approve:
+    description: Approve or deny other staff members' protected commands.
+    default: op
+  adminguard.audit:
+    description: View the audit log.
+    default: op
+  adminguard.notify:
+    description: See audit notifications in chat.
+    default: op
+  adminguard.admin:
+    description: Edit rules and settings, reset PINs, reload.
+    default: op
+  adminguard.bypass:
+    description: Skip every AdminGuard check. NOT given to OPs by default - grant it very carefully.
+    default: false

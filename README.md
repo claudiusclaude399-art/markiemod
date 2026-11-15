@@ -13,3 +13,11 @@ Client-side only. Open settings with /pvpmod in chat. Config: config/pvpmod.json
 Build: push to GitHub; the Actions tab builds the jar (artifact "pvpmod-jar", use the one without -sources).
 The colour tints live in their own mixin config (pvpmod.tint.mixins.json). If one fails to apply,
 the rest of the mod still loads.
+
+---
+
+# Paper server plugins
+
+`paper-plugins/` has two Paper 1.21.11 server plugins: **GriefCheck** (who griefed a base, with lookups, a grief report,
+alerts and rollbacks) and **AdminGuard** (powerful commands need a PIN, confirmation or a second staff member's approval,
+with an audit log). See [paper-plugins/README.md](paper-plugins/README.md). The *paper-plugins* GitHub Action builds both jars.

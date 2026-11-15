@@ -1,0 +1,51 @@
+name: GriefCheck
+version: '${version}'
+main: dev.markiemod.griefcheck.GriefCheckPlugin
+api-version: '1.21'
+description: Find out who griefed a base. Logs block, chest, fire and explosion changes with lookups, grief reports, alerts and rollbacks.
+authors: [markiemod]
+commands:
+  griefcheck:
+    description: Open the GriefCheck menu or run a GriefCheck command.
+    usage: /gc help
+    aliases: [gc, gcheck, grief]
+permissions:
+  griefcheck.use:
+    description: Open the /gc menu.
+    default: op
+  griefcheck.inspect:
+    description: Use the block inspector.
+    default: op
+  griefcheck.lookup:
+    description: Search the logs and open grief reports.
+    default: op
+  griefcheck.rollback:
+    description: Roll back and restore changes.
+    default: op
+  griefcheck.teleport:
+    description: Teleport to logged actions.
+    default: op
+  griefcheck.alerts:
+    description: Receive grief alerts and view the alert list.
+    default: op
+  griefcheck.alerts.exempt:
+    description: Never trigger grief alerts.
+    default: false
+  griefcheck.trust:
+    description: Trust friends so they don't trigger grief alerts on your builds.
+    default: true
+  griefcheck.admin:
+    description: Settings GUI, reload and purge.
+    default: op
+  griefcheck.*:
+    description: Everything in GriefCheck.
+    default: op
+    children:
+      griefcheck.use: true
+      griefcheck.inspect: true
+      griefcheck.lookup: true
+      griefcheck.rollback: true
+      griefcheck.teleport: true
+      griefcheck.alerts: true
+      griefcheck.trust: true
+      griefcheck.admin: true

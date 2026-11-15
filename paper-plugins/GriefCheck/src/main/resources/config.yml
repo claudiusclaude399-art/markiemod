@@ -1,0 +1,71 @@
+# ============================================================
+#  GriefCheck  -  who griefed a base?
+#  Everything here can also be changed in-game: /gc settings
+# ============================================================
+
+logging:
+  block-break: true
+  block-place: true
+  # Items taken from / put into chests, barrels, shulkers, furnaces, hoppers...
+  containers: true
+  # TNT is credited to the player who lit it.
+  explosions: true
+  fire: true
+  buckets: true
+  # Non-hostile mobs killed by players (pets, villagers, animals) and item frames/paintings broken.
+  entity-kills: true
+  # Blocks changed by the mobs listed in mob-types.
+  mob-block-changes: true
+  mob-types: [ENDERMAN, WITHER, ENDER_DRAGON, RAVAGER, ZOMBIE]
+  # Worlds where nothing is logged.
+  excluded-worlds: []
+
+alerts:
+  # Warn staff (griefcheck.alerts) when a player breaks, blows up or loots
+  # 'threshold' things that OTHER players placed within 'window-seconds'.
+  enabled: true
+  threshold: 15
+  window-seconds: 60
+  cooldown-seconds: 120
+  count-container-takes: true
+  sound: true
+
+lookup:
+  default-radius: 10
+  default-time: 3d
+
+report:
+  default-radius: 30
+  default-time: 7d
+
+inspector:
+  lines-per-page: 8
+
+rollback:
+  # Rollbacks bigger than this need a player (u:) so nobody rolls back the whole map by accident.
+  max-radius: 100
+  # Blocks changed per server tick. Lower it if rollbacks cause lag.
+  blocks-per-tick: 400
+
+# Delete log entries older than this many days at startup. 0 = keep forever.
+retention-days: 60
+
+# MiniMessage format: https://docs.advntr.dev/minimessage/format.html
+messages:
+  prefix: "<dark_gray>[<red>GriefCheck</red>]</dark_gray> "
+  no-permission: "<red>You don't have permission to do that."
+  players-only: "<red>Only players can do that."
+  inspector-on: "<green>Inspector enabled. <gray>Left-click blocks to see their history, right-click chests to see who took what."
+  inspector-off: "<yellow>Inspector disabled."
+  inspector-header: "<dark_gray>----- <red>GriefCheck</red> <gray><world> <x>, <y>, <z></gray> -----"
+  no-inspection: "<red>Inspect a block first."
+  no-results: "<gray>Nothing logged here."
+  nothing-to-rollback: "<gray>Nothing to roll back for those filters."
+  rollback-done: "<green>Rollback finished: <white><count></white> changes undone <gray>(<skipped> skipped, <seconds>s)."
+  restore-done: "<green>Restore finished: <white><count></white> changes re-applied <gray>(<skipped> skipped, <seconds>s)."
+  trusted: "<green><player> is now trusted. <gray>They won't trigger grief alerts on your builds."
+  untrusted: "<yellow><player> is no longer trusted."
+  unknown-player: "<red>No player called <player> has joined this server."
+  purged: "<green>Deleted <count> old log entries."
+  reloaded: "<green>Config reloaded."
+  alert: "<red>⚠ <white><player></white> broke/looted <yellow><count></yellow> things owned by <white><victims></white> in <window> at <gray><where></gray>"

@@ -1,0 +1,159 @@
+# ============================================================
+#  AdminGuard  -  anti admin abuse
+#  Most of this can also be changed in-game: /ag settings, /ag rules
+# ============================================================
+
+# If this list is not empty, ONLY these players (names or UUIDs) can change AdminGuard
+# rules/settings in-game, even if others have adminguard.admin. Recommended: put the server owner here.
+owners: []
+
+settings:
+  # After entering a correct PIN, don't ask again for this many minutes. 0 = ask every time.
+  session-minutes: 5
+  end-session-on-quit: true
+  pin-min-length: 4
+  # Wrong PINs in a row before the player is locked out of protected commands.
+  max-pin-attempts: 3
+  lockout-minutes: 10
+  # Requests waiting for approval expire after this.
+  request-timeout-seconds: 120
+  require-pin-for-approvals: true
+  require-pin-for-settings: true
+  allow-self-approval: false
+  allow-console-approval: true
+  # The confirm button can't be clicked until this long after the screen opens (stops panic double-clicks).
+  confirm-delay-ms: 750
+  # Max protected commands a player can attempt per minute. 0 = unlimited.
+  max-protected-per-minute: 15
+  # Don't prompt for commands the player has no permission for (the server would refuse them anyway).
+  skip-if-no-permission: true
+  # Command blocks/minecarts can't run commands whose rule needs a PIN, approval or is blocked.
+  block-command-blocks: true
+  # Log protected commands run from the console / RCON.
+  log-console: true
+
+keypad:
+  # Shuffle digit positions every time the keypad opens.
+  shuffle: false
+  digit-material: LIGHT_BLUE_STAINED_GLASS_PANE
+
+op-whitelist:
+  # When enabled, any operator not listed here is de-opped within 2 seconds.
+  enabled: false
+  kick: false
+  players: []
+
+notifications:
+  # Audit events shown in chat to players with adminguard.notify.
+  staff-chat: [REQUESTED, EXECUTED, DENIED, BLOCKED, LOCKED_OUT, PIN_FAILED, RATE_LIMITED, OP_REVOKED, COMMAND_BLOCK, LOGGED, SETTINGS, BYPASSED]
+
+webhook:
+  enabled: false
+  url: ""
+  username: AdminGuard
+  events: [REQUESTED, APPROVED, EXECUTED, DENIED, BLOCKED, LOCKED_OUT, RATE_LIMITED, OP_REVOKED, COMMAND_BLOCK, SETTINGS, CONSOLE, BYPASSED]
+
+# ------------------------------------------------------------
+# Protected commands.
+#   commands:    labels to match (namespaces like minecraft: are ignored, aliases are resolved). "*" = any command.
+#   args-regex:  optional; the rule only applies when the arguments match (case-insensitive).
+#   mode:        LOG, CONFIRM, PIN, APPROVAL, PIN_AND_APPROVAL or BLOCK.
+#   approvals:   how many OTHER staff must approve (APPROVAL modes).
+# When several rules match, the strictest wins. "/execute ... run <cmd>" is checked as well.
+# ------------------------------------------------------------
+rules:
+  operators:
+    commands: [op, deop]
+    mode: PIN_AND_APPROVAL
+    approvals: 1
+  permissions:
+    commands: [lp, luckperms, perm, perms, permission, permissions, pex, manuadd, manudel, mangaddp, mangdelp]
+    mode: PIN_AND_APPROVAL
+    approvals: 1
+  server-control:
+    commands: [stop, restart, reload, rl, plugman, plugins-manager]
+    mode: PIN_AND_APPROVAL
+    approvals: 1
+  sudo:
+    commands: [sudo, esudo, forcecommand]
+    mode: PIN_AND_APPROVAL
+    approvals: 1
+  whitelist-off:
+    commands: [whitelist]
+    args-regex: "^(off|remove)"
+    mode: APPROVAL
+    approvals: 1
+  mass-selectors:
+    commands: ["*"]
+    args-regex: "@[ae]"
+    mode: APPROVAL
+    approvals: 1
+  gamemode:
+    commands: [gamemode, gm, gmc, gms, gma, gmsp, creative, survival, adventure, spectator, egamemode]
+    mode: PIN
+    approvals: 1
+  item-spawning:
+    commands: [give, i, item, give-item, egive, eitem, more, enchant, eenchant]
+    mode: PIN
+    approvals: 1
+  god-powers:
+    commands: [fly, god, tgm, heal, feed, vanish, v, speed, effect, attribute, xp, experience, exp]
+    mode: CONFIRM
+    approvals: 1
+  punishments:
+    commands: [ban, ban-ip, tempban, ipban, kick, mute, tempmute, pardon, pardon-ip, unban, warn, jail]
+    mode: CONFIRM
+    approvals: 1
+  world-changes:
+    commands: [gamerule, difficulty, worldborder, setworldspawn, weather, time, kill, clear, fill, setblock, clone, summon, data]
+    mode: CONFIRM
+    approvals: 1
+  worldedit-big:
+    commands: ["/set", "/replace", "/walls", "/regen", "/fill", "/drain", "/cut", "/paste", "/delchunks", "/undo"]
+    mode: CONFIRM
+    approvals: 1
+  economy:
+    commands: [eco, economy, money]
+    args-regex: "^(give|set|take|reset)"
+    mode: PIN
+    approvals: 1
+  inventory-snooping:
+    commands: [invsee, endersee, openinv, openender]
+    mode: LOG
+    approvals: 1
+  teleport-others:
+    commands: [tp, teleport, tphere, s, tpall, tpo]
+    mode: LOG
+    approvals: 1
+
+# MiniMessage format: https://docs.advntr.dev/minimessage/format.html
+messages:
+  prefix: "<dark_gray>[<gold>AdminGuard</gold>]</dark_gray> "
+  no-permission: "<red>You don't have permission to do that."
+  players-only: "<red>Only players can do that."
+  not-owner: "<red>Only the server owners listed in AdminGuard's config can change this."
+  blocked: "<red>⛔ <white><command></white> is blocked by AdminGuard."
+  no-pin: "<red>That command needs your PIN, but you haven't set one. <yellow>Use /ag setpin first."
+  pin-set: "<green>Your PIN has been saved. <gray>Keep it secret!"
+  pin-too-short: "<red>Your PIN must be at least <length> digits."
+  pin-mismatch: "<red>The PINs didn't match. Try again with /ag setpin."
+  locked-out: "<red>Too many wrong PINs. Protected commands are locked for <time>."
+  rate-limited: "<red>Slow down! You can run at most <limit> protected commands per minute."
+  too-many-requests: "<red>You already have 3 requests waiting. Wait for them or cancel one in /ag requests."
+  waiting-approval: "<yellow>⏳ Request <white>#<id></white> sent. It needs <white><count></white> approval(s) from other staff within <time>."
+  no-approvers-online: "<gray>Nobody who can approve is online right now. Console can use /ag approve <id>."
+  approved: "<green>You approved request #<id> from <player>."
+  denied: "<yellow>You denied request #<id>."
+  request-cancelled: "<gray>Request #<id> cancelled."
+  your-request-approved: "<green>✔ <player> approved your request #<id> <gray>(<count>)"
+  your-request-denied: "<red>✖ <player> denied your request #<id>: <gray><reason>"
+  request-expired: "<gray>Request #<id> expired."
+  no-such-request: "<red>There's no pending request #<id>."
+  cannot-self-approve: "<red>You can't approve your own request."
+  already-approved: "<gray>You already approved that request."
+  session-ended: "<yellow>Your verified session has ended. You'll need your PIN again."
+  op-revoked: "<red>Your OP was removed: you're not on the OP whitelist."
+  op-kick: "<red>You are not allowed to be an operator on this server."
+  unknown-player: "<red>No player called <player> has joined this server."
+  reloaded: "<green>AdminGuard config reloaded."
+  staff-notify: "<dark_gray>[<gold>Audit</gold>]</dark_gray> <type_color><type></type_color> <white><player></white> <gray><command></gray> <dark_gray><detail>"
