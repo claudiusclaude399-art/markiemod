@@ -17,6 +17,8 @@ public class FightRecord {
     public String groupId = "";
     /** The other fighters in the group, whose positions are stored per frame in {@link Frame#x}. */
     public List<Other> others = new ArrayList<>();
+    /** The blocks around the fight for the 3D replay (see {@link WorldSnapshot}); null if not saved. */
+    public int[] wb;
     public String dim = "";
     public long start;
     public int preroll;            // ticks recorded before the first hit

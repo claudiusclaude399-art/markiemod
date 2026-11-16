@@ -20,6 +20,7 @@ the rest of the mod still loads.
 ![Replay](docs/replay.jpg)
 ![Their eyes](docs/replay-eyes.jpg)
 ![Group fight](docs/group-replay.jpg)
+![Map in the replay](docs/replay-map.jpg)
 ![Graphs](docs/graphs.jpg)
 ![Counter Lab](docs/counter-lab.jpg)
 ![Counter](docs/counter.jpg)
@@ -44,6 +45,11 @@ Each fight gets a report with four tabs:
 - **Replay**: a 3D reconstruction of the fight with both players drawn as real models wearing their skins (walking, arm swings on hits, head pitch) (orbit, top-down, or **their eyes**, which shows what the opponent
   was looking at). Hitboxes, look rays, hit lines with the measured reach, totem pops and a pin at every flagged
   moment. The timeline shows every flag; `F` jumps to the next one, space plays, arrow keys step a tick.
+- **Map in the replay (optional)**: while recording, the blocks around the fight are saved (only the surface you
+  could see, with each block's map colour and real height, so slabs are half blocks and water is see-through).
+  The replay draws that terrain around the players, so you see the real walls, pillars, holes and water they
+  fought around. Toggle it with "Map: On/Off" in the replay; turn off saving in Settings ("Save the map around
+  fights"). Fights recorded before this feature say "no map saved".
 - **Flags**: every suspicious moment in order, with the measured value. Click one to watch it.
 - **Counter**: a 3D Counter Lab plus a coach for beating them. The lab is a holographic arena where their model
   (their skin) stands in the middle and a ghost of you (your skin) acts out the counter, on top of your real fight

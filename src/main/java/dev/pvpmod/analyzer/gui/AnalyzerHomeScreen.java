@@ -255,7 +255,7 @@ public class AnalyzerHomeScreen extends GlassScreen {
     private void drawSettings(float W, float H) {
         float k = sheet.get();
         Glass.rect(0, 0, W, H, Col.a(0x000000, 0.35f * Math.min(1, k)));
-        float sw = Math.min(330, W - 30), sh = 250;
+        float sw = Math.min(330, W - 30), sh = 276;
         float sx = (W - sw) / 2f, sy = H - sh - 14 + (1f - k) * (sh + 30);
         Glass.panel(sx, sy, sw, sh, 24, 0x1C1C1E, 1.1f);
         GFont.draw("Settings", sx + 18, sy + 16, 14, Col.LABEL, true);
@@ -265,17 +265,18 @@ public class AnalyzerHomeScreen extends GlassScreen {
         }
         PvpConfig c = PvpConfig.get();
         float ry = sy + 46, rh = 26;
-        String[] labels = {"Analyze my fights", "Live island at top of screen", "Save fights to disk", "Summary in chat after a fight"};
+        String[] labels = {"Analyze my fights", "Live island at top of screen", "Save fights to disk", "Summary in chat after a fight", "Save the map around fights (3D replay)"};
         for (int i = 0; i < labels.length; i++) {
             float y = ry + i * rh;
             GFont.draw(labels[i], sx + 18, y + 5, 8.5f, Col.LABEL, false);
-            boolean v = switch (i) { case 0 -> c.analyzerEnabled; case 1 -> c.analyzerHud; case 2 -> c.analyzerSave; default -> c.analyzerChat; };
+            boolean v = switch (i) { case 0 -> c.analyzerEnabled; case 1 -> c.analyzerHud; case 2 -> c.analyzerSave; case 3 -> c.analyzerChat; default -> c.analyzerSaveWorld; };
             if (toggle("t" + i, sx + sw - 48, y + 1, v)) {
                 switch (i) {
                     case 0 -> c.analyzerEnabled = !v;
                     case 1 -> c.analyzerHud = !v;
                     case 2 -> c.analyzerSave = !v;
-                    default -> c.analyzerChat = !v;
+                    case 3 -> c.analyzerChat = !v;
+                    default -> c.analyzerSaveWorld = !v;
                 }
             }
             if (i < labels.length - 1) Glass.rect(sx + 18, y + rh - 3, sw - 36, 0.5f, Col.a(0xFFFFFF, 0.08f));

@@ -83,6 +83,7 @@ public final class FightTracker {
         public long lastFlagAt;
         int seenFlags = 0;
         long lastActive = System.currentTimeMillis();
+        final WorldSnapshot snap = new WorldSnapshot();
 
         Live(PlayerEntity op) {
             opUuid = op.getUuid();
@@ -262,6 +263,10 @@ public final class FightTracker {
             l.rec.frames.add(new Frame(l.t++, m, o, ping(mc, mc.player.getUuid()), ping(mc, op.getUuid())));
         }
         l.rec.preroll = n;
+        if (PvpConfig.get().analyzerSaveWorld) {
+            WorldCapture.ensure(l.snap, mc.world, mc.player.getX(), mc.player.getY(), mc.player.getZ());
+            WorldCapture.ensure(l.snap, mc.world, op.getX(), op.getY(), op.getZ());
+        }
         l.combat();
         lives.put(op.getUuid(), l);
         return l;
@@ -321,6 +326,10 @@ public final class FightTracker {
                 for (FightRecord.Other o : l.rec.others) f.x.add(otherState(world, o, now));
             }
             l.rec.frames.add(f);
+            if (PvpConfig.get().analyzerSaveWorld && l.t % 10 == 0) {
+                WorldCapture.ensure(l.snap, world, meNow.x, meNow.y, meNow.z);
+                if (!f.op.has(PState.ABSENT)) WorldCapture.ensure(l.snap, world, f.op.x, f.op.y, f.op.z);
+            }
             for (FightEvent e : l.pending) e.t = l.t;
             l.rec.events.addAll(l.pending);
             l.pending.clear();
@@ -388,6 +397,7 @@ public final class FightTracker {
     public static void endLive(Live l, String result) {
         if (lives.remove(l.opUuid) == null) return;
         l.rec.result = result;
+        l.rec.wb = l.snap.toArray();
         l.analyzer.step();
         l.analyzer.finish();
         if (l.rec.frames.size() - l.rec.preroll < 20) return;   // too short to be a fight

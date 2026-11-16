@@ -90,8 +90,11 @@ class Scene3D {
     }
 
     // ------------------------------------------------------------------ queued solids
-    protected record Face(float[] s0, float[] s1, float[] s3, double depth, Identifier tex, int u, int v, int w, int h,
+    /** s0 top-left, s1 top-right, s2 bottom-right, s3 bottom-left (screen). */
+    protected record Face(float[] s0, float[] s1, float[] s3, float[] s2, double depth, Identifier tex, int u, int v, int w, int h,
                           int tw, int th, int color) {}
+
+    private static boolean realQuads = true;
 
     protected final List<Face> queue = new ArrayList<>();
 
@@ -103,6 +106,17 @@ class Scene3D {
     }
 
     protected void drawFace(Face f) {
+        if (realQuads) {
+            try {
+                drawQuad(f);
+                return;
+            } catch (Throwable t) {
+                realQuads = false;   // fall back to parallelograms
+                System.err.println("[PvpMod] 3D quads unavailable, using fallback: " + t);
+            }
+        }
+        float[][] q = fit(f.s0, f.s1, f.s2, f.s3, 0.5f);
+        f = new Face(q[0], q[1], q[2], null, f.depth, f.tex, f.u, f.v, f.w, f.h, f.tw, f.th, f.color);
         Matrix3x2fStack m = Glass.ctx().getMatrices();
         m.pushMatrix();
         m.mul(new Matrix3x2f(
@@ -113,18 +127,87 @@ class Scene3D {
         m.popMatrix();
     }
 
+    /**
+     * The GUI can only draw affine (parallelogram) quads, so fit one to all four projected corners (instead of
+     * three) and grow it by a fraction of a pixel. That hides the seams between neighbouring faces.
+     */
+    protected float[][] fit(float[] s0, float[] s1, float[] s2, float[] s3, float growPx) {
+        float cxs = (s0[0] + s1[0] + s2[0] + s3[0]) / 4, cys = (s0[1] + s1[1] + s2[1] + s3[1]) / 4;
+        float ux = ((s1[0] - s0[0]) + (s2[0] - s3[0])) / 2, uy = ((s1[1] - s0[1]) + (s2[1] - s3[1])) / 2;
+        float vx = ((s3[0] - s0[0]) + (s2[0] - s1[0])) / 2, vy = ((s3[1] - s0[1]) + (s2[1] - s1[1])) / 2;
+        float g = growPx / Glass.scale();
+        float ul = (float) Math.sqrt(ux * ux + uy * uy), vl = (float) Math.sqrt(vx * vx + vy * vy);
+        if (ul > 1e-4f) { float k = 1 + 2 * g / ul; ux *= k; uy *= k; }
+        if (vl > 1e-4f) { float k = 1 + 2 * g / vl; vx *= k; vy *= k; }
+        float[] a = {cxs - ux / 2 - vx / 2, cys - uy / 2 - vy / 2};
+        return new float[][]{a, {a[0] + ux, a[1] + uy}, {a[0] + vx, a[1] + vy}};
+    }
+
+    /** Submits the face as a real four-corner quad. */
+    private void drawQuad(Face f) {
+        net.minecraft.client.gui.DrawContext ctx = Glass.ctx();
+        Matrix3x2f pose = new Matrix3x2f(ctx.getMatrices());
+        float[] xs = {f.s0[0], f.s3[0], f.s2[0], f.s1[0]}, ys = {f.s0[1], f.s3[1], f.s2[1], f.s1[1]};
+        float[] us = null, vs = null;
+        boolean solid = f.tex == GlassTex.white();
+        if (!solid) {
+            float u0 = f.u / (float) f.tw, u1 = (f.u + f.w) / (float) f.tw, v0 = f.v / (float) f.th, v1 = (f.v + f.h) / (float) f.th;
+            us = new float[]{u0, u0, u1, u1};
+            vs = new float[]{v0, v1, v1, v0};
+        }
+        // keep the winding the GUI expects (top-left, bottom-left, bottom-right, top-right)
+        float area = 0;
+        for (int i = 0; i < 4; i++) { int j = (i + 1) % 4; area += xs[i] * ys[j] - xs[j] * ys[i]; }
+        if (area > 0) {
+            swap(xs, 1, 3); swap(ys, 1, 3);
+            if (us != null) { swap(us, 1, 3); swap(vs, 1, 3); }
+        }
+        // bounds and scissor in screen space
+        float minX = Float.MAX_VALUE, minY = Float.MAX_VALUE, maxX = -Float.MAX_VALUE, maxY = -Float.MAX_VALUE;
+        org.joml.Vector2f tmp = new org.joml.Vector2f();
+        for (int i = 0; i < 4; i++) {
+            pose.transformPosition(xs[i], ys[i], tmp);
+            minX = Math.min(minX, tmp.x); maxX = Math.max(maxX, tmp.x); minY = Math.min(minY, tmp.y); maxY = Math.max(maxY, tmp.y);
+        }
+        org.joml.Vector2f a = pose.transformPosition(vx, vy, new org.joml.Vector2f()), b = pose.transformPosition(vx + vw, vy + vh, new org.joml.Vector2f());
+        net.minecraft.client.gui.ScreenRect scissor = new net.minecraft.client.gui.ScreenRect((int) Math.floor(a.x), (int) Math.floor(a.y),
+            (int) Math.ceil(b.x - a.x), (int) Math.ceil(b.y - a.y));
+        net.minecraft.client.gui.ScreenRect bounds = new net.minecraft.client.gui.ScreenRect((int) Math.floor(minX), (int) Math.floor(minY),
+            Math.max(1, (int) Math.ceil(maxX - minX)), Math.max(1, (int) Math.ceil(maxY - minY))).intersection(scissor);
+        if (bounds == null) return;
+        net.minecraft.client.texture.TextureSetup tex;
+        com.mojang.blaze3d.pipeline.RenderPipeline pipe;
+        if (solid) {
+            tex = net.minecraft.client.texture.TextureSetup.empty();
+            pipe = RenderPipelines.GUI;
+        } else {
+            net.minecraft.client.texture.AbstractTexture t = net.minecraft.client.MinecraftClient.getInstance().getTextureManager().getTexture(f.tex);
+            tex = net.minecraft.client.texture.TextureSetup.of(t.getGlTextureView(), t.getSampler());
+            pipe = RenderPipelines.GUI_TEXTURED;
+        }
+        ((dev.pvpmod.mixin.DrawContextAccessor) ctx).pvpmod$getState().addSimpleElement(
+            new Quad4(pipe, tex, pose, xs, ys, us, vs, f.color, scissor, bounds));
+    }
+
+    private static void swap(float[] a, int i, int j) { float t = a[i]; a[i] = a[j]; a[j] = t; }
+
     /** A flat solid parallelogram p0 (top-left), p1 (top-right), p3 (bottom-left). Queued, or drawn now. */
     protected void quad(double[] p0, double[] p1, double[] p3, int argb, boolean now) {
         double[] c0 = cam(p0[0], p0[1], p0[2]), c1 = cam(p1[0], p1[1], p1[2]), c3 = cam(p3[0], p3[1], p3[2]);
         double[] c2 = cam(p1[0] + p3[0] - p0[0], p1[1] + p3[1] - p0[1], p1[2] + p3[2] - p0[2]);
         if (c0[2] < 0.1 || c1[2] < 0.1 || c2[2] < 0.1 || c3[2] < 0.1) return;
         int color = Col.fade(argb, Glass.alpha);
-        Face f = new Face(screen(c0), screen(c1), screen(c3), (c0[2] + c1[2] + c2[2] + c3[2]) / 4, GlassTex.white(), 0, 0, 4, 4, 4, 4, color);
+        Face f = new Face(screen(c0), screen(c1), screen(c3), screen(c2), (c0[2] + c1[2] + c2[2] + c3[2]) / 4, GlassTex.white(), 0, 0, 4, 4, 4, 4, color);
         if (now) drawFace(f); else queue.add(f);
     }
 
     /** Shaded solid cube (queued). */
     protected void cube(double x0, double y0, double z0, double x1, double y1, double z1, int rgb, float alpha) {
+        cube(x0, y0, z0, x1, y1, z1, rgb, alpha, 63);
+    }
+
+    /** Shaded solid cube with only some faces (bits: south, north, west, east, up, down). */
+    protected void cube(double x0, double y0, double z0, double x1, double y1, double z1, int rgb, float alpha, int mask) {
         double[][][] faces = {
             {{x0, y1, z1}, {x1, y1, z1}, {x0, y0, z1}, {0, 0, 1}},
             {{x1, y1, z0}, {x0, y1, z0}, {x1, y0, z0}, {0, 0, -1}},
@@ -135,6 +218,7 @@ class Scene3D {
         };
         float[] shade = {0.8f, 0.8f, 0.65f, 0.65f, 1f, 0.5f};
         for (int i = 0; i < 6; i++) {
+            if ((mask & (1 << i)) == 0) continue;
             double[][] q = faces[i];
             double[] n = q[3];
             double mx = (q[1][0] + q[2][0]) / 2, my = (q[1][1] + q[2][1]) / 2, mz = (q[1][2] + q[2][2]) / 2;
@@ -253,7 +337,7 @@ class Scene3D {
             if (c0[2] < 0.1 || c1[2] < 0.1 || c2[2] < 0.1 || c3[2] < 0.1) continue;
             float sh = shade[f];
             int color = (Math.round(ta * 255) << 24) | (Math.round(tr * sh) << 16) | (Math.round(tg * sh) << 8) | Math.round(tb * sh);
-            queue.add(new Face(screen(c0), screen(c1), screen(c2), cam(fcx, fcy, fcz)[2], tex, uv[f][0], uv[f][1], uv[f][2], uv[f][3], 64, 64, color));
+            queue.add(new Face(screen(c0), screen(c1), screen(c2), screen(c3), cam(fcx, fcy, fcz)[2], tex, uv[f][0], uv[f][1], uv[f][2], uv[f][3], 64, 64, color));
         }
     }
 }

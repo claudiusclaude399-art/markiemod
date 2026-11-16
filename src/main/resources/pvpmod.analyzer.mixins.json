@@ -4,7 +4,10 @@
   "package": "dev.pvpmod.mixin",
   "compatibilityLevel": "JAVA_21",
   "client": [
-    "ClientPlayNetworkHandlerMixin"
+    "ClientPlayNetworkHandlerMixin",
+    "DrawContextAccessor"
   ],
-  "injectors": { "defaultRequire": 0 }
+  "injectors": {
+    "defaultRequire": 0
+  }
 }

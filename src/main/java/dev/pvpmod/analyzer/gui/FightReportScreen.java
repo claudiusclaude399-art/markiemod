@@ -517,6 +517,18 @@ public class FightReportScreen extends GlassScreen {
         view.draw(playhead, viewX, viewY, viewW, viewH, dt, selected);
         Glass.rim(viewX, viewY, viewW, viewH, 16, Col.a(0xFFFFFF, 0.25f), Col.a(0xFFFFFF, 0.06f));
         int mode = segmented("cam", new String[]{"Orbit", "Their eyes", "Top"}, view.mode, viewX + 8, viewY + 8, Math.min(200, viewW - 16), 18);
+        // the real map around the fight (optional)
+        float mw = 78, mxp = viewX + viewW - mw - 8;
+        if (view.hasWorld()) {
+            if (button("worldmap", view.showWorld ? "Map: On" : "Map: Off", mxp, viewY + 8, mw, 18,
+                view.showWorld ? Col.GREEN : 0x2C2C2E, view.showWorld ? 0.40f : 0.3f)) {
+                view.showWorld = !view.showWorld;
+                dev.pvpmod.config.PvpConfig.get().analyzerReplayWorld = view.showWorld;
+                dev.pvpmod.config.PvpConfig.save();
+            }
+        } else {
+            GFont.drawRight("no map saved for this fight", viewX + viewW - 10, viewY + 13, 6.5f, Col.LABEL3, false);
+        }
         view.mode = mode;
         GFont.drawRight(view.mode == ReplayView.EYES ? "what they saw" : "drag to rotate • scroll to zoom", viewX + viewW - 10, viewY + viewH - 13, 6.5f, Col.LABEL3, false);
 

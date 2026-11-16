@@ -56,6 +56,8 @@ public class PvpConfig {
     public float analyzerSensitivity = 1.0f;   // 0.8 strict .. 1.3 relaxed
     public int analyzerTimeout = 20;           // seconds without hits before a fight ends
     public int analyzerMaxFights = 50;
+    public boolean analyzerSaveWorld = true;    // save the blocks around fights for the 3D replay
+    public boolean analyzerReplayWorld = true;  // show them in the replay
 
     public static PvpConfig get() { return instance; }
 

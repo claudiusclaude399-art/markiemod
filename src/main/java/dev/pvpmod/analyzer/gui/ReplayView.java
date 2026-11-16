@@ -37,6 +37,52 @@ final class ReplayView extends Scene3D {
 
     PState me(float ph) { return state(ph, true); }
 
+    // ------------------------------------------------------------------ world map
+    boolean showWorld = dev.pvpmod.config.PvpConfig.get().analyzerReplayWorld;
+
+    boolean hasWorld() { return rec.wb != null && rec.wb.length >= dev.pvpmod.analyzer.WorldSnapshot.STRIDE; }
+
+    /** Queues the saved blocks around the camera target, fading out at the edge. */
+    private void queueWorld(double gy) {
+        int[] b = rec.wb;
+        double R = 15, fadeFrom = 10;
+        int S = dev.pvpmod.analyzer.WorldSnapshot.STRIDE;
+        // cube() face order: south, north, west, east, up, down -> snapshot face bits
+        for (int i = 0; i + S <= b.length; i += S) {
+            int bx = b[i], by = b[i + 1], bz = b[i + 2], rgb = b[i + 3], info = b[i + 4];
+            double dx = bx + 0.5 - tx, dz = bz + 0.5 - tz;
+            double d = Math.sqrt(dx * dx + dz * dz);
+            if (d > R || by < gy - 7 || by > gy + 12) continue;
+            float a = d < fadeFrom ? 1f : (float) (1 - (d - fadeFrom) / (R - fadeFrom));
+            boolean water = (info & dev.pvpmod.analyzer.WorldSnapshot.WATER) != 0;
+            if (water) a *= 0.55f;
+            double h = ((info >> 6) & 31) / 16.0;
+            int faces = info & 63;
+            int mask = ((faces & 8) != 0 ? 1 : 0) | ((faces & 4) != 0 ? 2 : 0) | ((faces & 16) != 0 ? 4 : 0)
+                | ((faces & 32) != 0 ? 8 : 0) | ((faces & 2) != 0 ? 16 : 0) | ((faces & 1) != 0 ? 32 : 0);
+            // faint checker so individual blocks are visible, like in game
+            float shade = ((bx + bz + by) & 1) == 0 ? 0.95f : 0.88f;
+            cube(bx, by, bz, bx + 1, by + h, bz + 1, shadeRgb(rgb, shade), a, mask);
+        }
+    }
+
+    /** Queues the skinned models of everyone in the fight; returns the other fighters (group fights). */
+    private List<PState> queuePlayers(float ph, PState me, PState op) {
+        modelFaces(me, mySkin(), ph, true);
+        if (mode != EYES) modelFaces(op, Ui.skin(rec.opUuid, rec.opName, rec.opTex, rec.opSig), ph, false);
+        List<PState> extras = new ArrayList<>();
+        for (int k = 0; k < rec.others.size(); k++) {
+            PState o = extra(ph, k);
+            extras.add(o);
+            if (o == null || o.has(PState.ABSENT)) continue;
+            FightRecord.Other ot = rec.others.get(k);
+            PState prev = extra(ph - 1, k);
+            double amt = prev == null ? 0 : clamp(Math.hypot(o.x - prev.x, o.z - prev.z) * 4.5, 0, 1);
+            player(o, Ui.skin(ot.uuid, ot.name, ot.tex, ot.sig), 0xE6FFFFFF, ph * 0.9, amt, -1);
+        }
+        return extras;
+    }
+
     /** Another fighter of a group fight at the playhead (null if not recorded then). */
     PState extra(float ph, int k) {
         int n = rec.frames.size();
@@ -93,15 +139,19 @@ final class ReplayView extends Scene3D {
         PState me = me(ph), op = op(ph);
         Glass.ctx().enableScissor((int) x, (int) y, (int) (x + w), (int) (y + h));
 
-        // ground grid
+        // ground grid, or the real map when it was saved
         double gy = Math.floor(Math.min(me.y, op.y) + 0.01);
+        boolean map = showWorld && hasWorld();
         int gx = (int) Math.floor(tx), gz = (int) Math.floor(tz), R = 12;
-        for (int i = -R; i <= R; i++) {
+        for (int i = -R; i <= R && !map; i++) {
             float fade = 1f - Math.abs(i) / (float) (R + 1);
             int col = Col.a(0xFFFFFF, 0.10f * fade);
             line3(gx + i, gy, gz - R, gx + i, gy, gz + R, 0.7f, col);
             line3(gx - R, gy, gz + i, gx + R, gy, gz + i, 0.7f, col);
         }
+        if (map) queueWorld(gy);
+        List<PState> extras = queuePlayers(ph, me, op);
+        flush();
 
         // trails
         int iph = (int) ph;
@@ -120,7 +170,7 @@ final class ReplayView extends Scene3D {
         }
 
         // ground shadows under players
-        for (PState s : new PState[]{me, op}) {
+        for (PState s : map ? new PState[0] : new PState[]{me, op}) {
             float[] a = project(s.x, gy, s.z);
             if (a != null) {
                 double[] c = cam(s.x, gy, s.z);
@@ -189,21 +239,7 @@ final class ReplayView extends Scene3D {
             }
         }
 
-        // players: skinned models, then hitbox, look ray and name tag on top
-        modelFaces(me, mySkin(), ph, true);
-        if (mode != EYES) modelFaces(op, Ui.skin(rec.opUuid, rec.opName, rec.opTex, rec.opSig), ph, false);
-        // the other fighters in a group fight
-        List<PState> extras = new ArrayList<>();
-        for (int k = 0; k < rec.others.size(); k++) {
-            PState o = extra(ph, k);
-            extras.add(o);
-            if (o == null || o.has(PState.ABSENT)) continue;
-            FightRecord.Other ot = rec.others.get(k);
-            PState prev = extra(ph - 1, k);
-            double amt = prev == null ? 0 : clamp(Math.hypot(o.x - prev.x, o.z - prev.z) * 4.5, 0, 1);
-            player(o, Ui.skin(ot.uuid, ot.name, ot.tex, ot.sig), 0xE6FFFFFF, ph * 0.9, amt, -1);
-        }
-        flush();
+        // hitbox, look ray and name tag on top of the models
         drawPlayer(me, Col.CYAN, "You", mode != EYES);
         if (mode != EYES) drawPlayer(op, Col.RED, rec.opName, true);
         for (int k = 0; k < extras.size(); k++) {

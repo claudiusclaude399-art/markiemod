@@ -121,6 +121,7 @@ public final class DemoFight {
             me.hp = meHp;
             if (t > 1100) meHp = Math.max(0, meHp - 0.2f);
         }
+        r.wb = arena();
         r.events.add(new FightEvent(1199, FightEvent.Kind.DEATH_ME).at(r.frames.get(1199).me.x, 64, r.frames.get(1199).me.z));
         return r;
     }
@@ -168,6 +169,38 @@ public final class DemoFight {
         return all;
     }
 
+    /** A small grass arena with a pillar, walls, a pool and a plank path, as a saved map for the 3D replay. */
+    static int[] arena() {
+        WorldSnapshot w = new WorldSnapshot();
+        int grass = 0x7FB238, stone = 0x707070, obsidian = 0x191919, planks = 0x8F7748, water = 0x3F76E4, dirt = 0x976D4D;
+        int full = 16 << 6;
+        java.util.Set<Long> solid = new java.util.HashSet<>();
+        for (int x = -14; x <= 46; x++) {
+            for (int z = -14; z <= 14; z++) {
+                boolean pool = x >= 1 && x <= 4 && z >= 9 && z <= 12;
+                boolean path = z == -2 && x >= 14 && x <= 40;
+                int faces = WorldSnapshot.FACE_UP;
+                if (x == -14) faces |= WorldSnapshot.FACE_WEST;
+                if (x == 46) faces |= WorldSnapshot.FACE_EAST;
+                if (z == -14) faces |= WorldSnapshot.FACE_NORTH;
+                if (z == 14) faces |= WorldSnapshot.FACE_SOUTH;
+                if (pool) w.add(x, 63, z, water, WorldSnapshot.FACE_UP | (14 << 6) | WorldSnapshot.WATER);
+                else w.add(x, 63, z, path ? planks : grass, faces | full);
+                if (faces != WorldSnapshot.FACE_UP) w.add(x, 62, z, dirt, (faces & ~WorldSnapshot.FACE_UP) | full);
+            }
+        }
+        // obsidian pillar, a stone wall, a half-slab step and a tree, all around where the fight happens
+        int[][] pillar = {{-3, 64, 0}, {-3, 65, 0}, {-3, 66, 0}, {-2, 64, 0}};
+        for (int[] b : pillar) w.add(b[0], b[1], b[2], obsidian, 63 | full);
+        for (int x = -10; x <= -5; x++) for (int y = 64; y <= 65; y++) w.add(x, y, 10, stone, (y == 65 ? 62 : 61) | full);
+        for (int x = 2; x <= 5; x++) w.add(x, 64, -2, stone, 63 | (8 << 6));
+        int log = 0x8F7748, leaves = 0x2F7A1E;
+        for (int y = 64; y <= 66; y++) w.add(-10, y, 4, log, 60 | full);
+        for (int dx = -1; dx <= 1; dx++) for (int dz = -1; dz <= 1; dz++) for (int y = 67; y <= 68; y++)
+            w.add(-10 + dx, y, 4 + dz, leaves, 63 | full);
+        return w.toArray();
+    }
+
     /** Another opponent fighting you at the same time as the demo cheater. */
     private static FightRecord companion(FightRecord base, String name, String uuid, double angle, boolean flyer, long seed) {
         Random rnd = new Random(seed);
@@ -180,6 +213,7 @@ public final class DemoFight {
         r.dim = base.dim;
         r.result = "END";
         r.preroll = base.preroll;
+        r.wb = base.wb;
         int n = base.frames.size();
         // pass 1: movement. They chase a spot next to you, at sprint speed at most (the flyer cheats past that)
         double px = base.frames.get(0).me.x + Math.sin(angle) * 3, pz = base.frames.get(0).me.z + Math.cos(angle) * 3;
