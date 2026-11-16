@@ -2,6 +2,7 @@ package dev.pvpmod.analyzer.gui;
 
 import dev.pvpmod.analyzer.Analyzer;
 import dev.pvpmod.analyzer.CheckType;
+import dev.pvpmod.analyzer.Counter;
 import dev.pvpmod.analyzer.FightEvent;
 import dev.pvpmod.analyzer.FightRecord;
 import dev.pvpmod.analyzer.FightRecord.FightMeta;
@@ -24,7 +25,7 @@ import java.util.concurrent.CompletableFuture;
 
 /** Full report for one fight: overview, graphs, 3D replay and the list of flags. */
 public class FightReportScreen extends GlassScreen {
-    private static final String[] TABS = {"Overview", "Graphs", "Replay", "Flags"};
+    private static final String[] TABS = {"Overview", "Graphs", "Replay", "Flags", "Counter"};
 
     private final FightMeta meta;
     private volatile FightRecord rec;
@@ -42,6 +43,9 @@ public class FightReportScreen extends GlassScreen {
     private static final float[] SPEEDS = {0.25f, 0.5f, 1f, 2f};
     private Flag selected;
     private final Spring flagScroll = new Spring(0f, 200f, 26f);
+    private final Spring counterScroll = new Spring(0f, 200f, 26f);
+    private float counterContentH = 0;
+    private long copiedAt = 0;
 
     // drag state
     private boolean dragView = false, dragTimeline = false;
@@ -155,8 +159,8 @@ public class FightReportScreen extends GlassScreen {
         GFont.draw(GFont.fit(meta.opName, 150, 12, true), hx + 28, y0 + 11, 12, Col.LABEL, true);
         GFont.draw(Ui.date(meta.start) + "  \u2022  " + Ui.duration(meta.ticks), hx + 28, y0 + 25, 7, Col.LABEL3, false);
 
-        boolean wide = pw >= 560;
-        float segW = wide ? 300 : Math.min(300, pw - 24);
+        boolean wide = pw >= 720;
+        float segW = Math.min(375, pw - 24);
         float segX = wide ? x0 + pw - segW - 14 : x0 + (pw - segW) / 2;
         float segY = wide ? y0 + 12 : y0 + 40;
         setTab(segmented("tabs", TABS, tab, segX, segY, segW, 22));
@@ -195,7 +199,8 @@ public class FightReportScreen extends GlassScreen {
             case 0 -> drawOverview(cx, cy, cw, ch);
             case 1 -> drawGraphs(cx, cy, cw, ch);
             case 2 -> drawReplay(cx, cy, cw, ch);
-            default -> drawFlags(cx, cy, cw, ch);
+            case 3 -> drawFlags(cx, cy, cw, ch);
+            default -> drawCounter(cx, cy, cw, ch);
         }
         m.popMatrix();
         Glass.alpha = old;
@@ -495,6 +500,115 @@ public class FightReportScreen extends GlassScreen {
             Glass.round(x + 14, yy + ch - 10, Math.max(3, (w - 28) * f.sev), 3, 1.5f, Col.a(f.c.color, 1f));
             if (clicked(x + 8, yy, w - 16, ch)) { selected = f; playhead = Math.max(0, f.t - 12); playing = true; }
             yy += ch + 6;
+        }
+    }
+
+    // ------------------------------------------------------------------ counter coach
+    private static List<String> wrapLines(String text, float w, float size, boolean bold) {
+        List<String> out = new ArrayList<>();
+        StringBuilder line = new StringBuilder();
+        for (String word : text.split(" ")) {
+            String test = line.length() == 0 ? word : line + " " + word;
+            if (GFont.width(test, size, bold) > w && line.length() > 0) {
+                out.add(line.toString());
+                line = new StringBuilder(word);
+            } else line = new StringBuilder(test);
+        }
+        if (line.length() > 0) out.add(line.toString());
+        return out;
+    }
+
+    /** Draws wrapped text and returns its height. */
+    private float para(String text, float x, float y, float w, float size, int color, boolean bold) {
+        List<String> lines = wrapLines(text, w, size, bold);
+        float lh = size + 3.5f;
+        for (int i = 0; i < lines.size(); i++) GFont.draw(lines.get(i), x, y + i * lh, size, color, bold);
+        return lines.size() * lh;
+    }
+
+    private float paraHeight(String text, float w, float size, boolean bold) {
+        return wrapLines(text, w, size, bold).size() * (size + 3.5f);
+    }
+
+    private void drawCounter(float x, float y, float w, float h) {
+        card(x, y, w, h);
+        float pad = 14;
+        GFont.draw("How to beat " + GFont.fit(rec.opName, w * 0.4f, 12, true), x + pad, y + 12, 12, Col.LABEL, true);
+        GFont.draw("Legit ways to win against what they used, based on this fight", x + pad, y + 28, 7.5f, Col.LABEL2, false);
+        boolean copied = System.currentTimeMillis() - copiedAt < 2000;
+        float bw = 132;
+        if (button("copyreport", copied ? "Copied!" : "Copy report for staff", x + w - bw - pad, y + 12, bw, 20,
+            copied ? Col.GREEN : Col.INDIGO, 0.45f)) {
+            client.keyboard.setClipboard(Counter.staffReport(rec, an));
+            copiedAt = System.currentTimeMillis();
+        }
+
+        float top = y + 44, bottom = y + h - 8;
+        float maxScroll = Math.max(0, counterContentH - (bottom - top));
+        if (hover(x, top, w, bottom - top)) {
+            float sc = takeScroll();
+            if (sc != 0) counterScroll.to(Math.max(0, Math.min(maxScroll, counterScroll.target() - sc * 40)));
+        }
+        counterScroll.to(Math.max(0, Math.min(maxScroll, counterScroll.target()))).update(dt);
+
+        List<CheckType> found = new ArrayList<>();
+        for (CheckType c : CheckType.values()) if (an.flagCount(c) > 0) found.add(c);
+        found.sort((a, b) -> Float.compare(an.checkScore(b) * b.weight, an.checkScore(a) * a.weight));
+
+        Glass.ctx().enableScissor((int) x, (int) top, (int) (x + w), (int) bottom);
+        float cy = top - counterScroll.get();
+        float cw = w - pad * 2, inner = cw - 28;
+        if (found.isEmpty()) {
+            String msg = "Nothing in this fight looked like cheating, so this one comes down to skill. Your fight breakdown is below.";
+            float ch = 32 + paraHeight(msg, inner, 7.5f, false);
+            Glass.round(x + pad, cy, cw, ch, 12, Col.a(Col.GREEN, 0.14f), Col.a(Col.GREEN, 0.05f));
+            Glass.rim(x + pad, cy, cw, ch, 12, Col.a(Col.GREEN, 0.5f), Col.a(Col.GREEN, 0.15f));
+            GFont.draw("Nothing to counter", x + pad + 14, cy + 9, 10, Col.LABEL, true);
+            para(msg, x + pad + 14, cy + 25, inner, 7.5f, Col.LABEL2, false);
+            cy += ch + 10;
+        }
+        for (CheckType c : found) {
+            String mine = Counter.personal(c, rec, an);
+            List<String> tips = Counter.tips(c);
+            float ch = 30 + paraHeight(mine, inner, 8, true) + 16;
+            for (String t : tips) ch += paraHeight(t, inner - 14, 7.5f, false) + 5;
+            ch += 6;
+            if (cy + ch > top - 4 && cy < bottom + 4) {
+                Glass.round(x + pad, cy, cw, ch, 14, Col.a(c.color, 0.12f), Col.a(c.color, 0.04f));
+                Glass.rim(x + pad, cy, cw, ch, 14, Col.a(c.color, 0.55f), Col.a(c.color, 0.12f));
+                float tx = x + pad + 14, ty = cy + 10;
+                chip(c.title, tx, ty, c.color);
+                GFont.drawRight(an.flagCount(c) + (an.flagCount(c) == 1 ? " flag" : " flags") + "  \u2022  " + Math.round(an.checkScore(c)) + "%",
+                    x + pad + cw - 14, ty + 2, 7, Col.LABEL2, true);
+                ty += 20;
+                ty += para(mine, tx, ty, inner, 8, Col.LABEL, true) + 4;
+                GFont.draw("HOW TO BEAT IT", tx, ty, 6.5f, Col.LABEL3, true);
+                ty += 12;
+                for (int i = 0; i < tips.size(); i++) {
+                    Glass.dot(tx + 4, ty + 4, 4.5f, Col.a(c.color, 0.9f));
+                    GFont.drawCentered(String.valueOf(i + 1), tx + 4, ty + 1.2f, 6, 0xFFFFFFFF, true);
+                    ty += para(tips.get(i), tx + 14, ty, inner - 14, 7.5f, Col.a(0xEBEBF5, 0.9f), false) + 5;
+                }
+            }
+            cy += ch + 8;
+        }
+        // general breakdown
+        List<String> gen = Counter.general(rec, an);
+        float gh = 30;
+        for (String g : gen) gh += paraHeight(g, inner, 7.5f, false) + 4;
+        if (cy + gh > top - 4 && cy < bottom + 4) {
+            Glass.round(x + pad, cy, cw, gh, 14, Col.a(0xFFFFFF, 0.07f), Col.a(0xFFFFFF, 0.03f));
+            Glass.rim(x + pad, cy, cw, gh, 14, Col.a(0xFFFFFF, 0.25f), Col.a(0xFFFFFF, 0.05f));
+            GFont.draw("Your fight", x + pad + 14, cy + 10, 10, Col.LABEL, true);
+            float ty = cy + 26;
+            for (String g : gen) ty += para(g, x + pad + 14, ty, inner, 7.5f, Col.LABEL2, false) + 4;
+        }
+        cy += gh + 8;
+        counterContentH = cy + counterScroll.get() - top;
+        Glass.ctx().disableScissor();
+        if (maxScroll > 0) {
+            float trackH = bottom - top, thumb = Math.max(20, trackH * trackH / counterContentH);
+            Glass.round(x + w - 6, top + (trackH - thumb) * (counterScroll.get() / maxScroll), 3, thumb, 1.5f, Col.a(0xFFFFFF, 0.3f));
         }
     }
 

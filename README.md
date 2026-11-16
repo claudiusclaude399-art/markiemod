@@ -20,6 +20,7 @@ the rest of the mod still loads.
 ![Replay](docs/replay.jpg)
 ![Their eyes](docs/replay-eyes.jpg)
 ![Graphs](docs/graphs.jpg)
+![Counter](docs/counter.jpg)
 
 Press **J** (or `/pvpmod fights`, or the "Fight Analyzer" button in `/pvpmod`) to open it.
 Every 1v1 is recorded automatically: the recording starts the first time you hit a player or a player hits
@@ -36,6 +37,12 @@ Each fight gets a report with four tabs:
   was looking at). Hitboxes, look rays, hit lines with the measured reach, totem pops and a pin at every flagged
   moment. The timeline shows every flag; `F` jumps to the next one, space plays, arrow keys step a tick.
 - **Flags**: every suspicious moment in order, with the measured value. Click one to watch it.
+- **Counter**: a coach for beating them. For every cheat it found it shows what they did to you, in numbers from
+  this fight (e.g. "you spent 23% of the fight in their 3 to 3.7 block free-hit zone"), and three legit ways to beat it,
+  plus a breakdown of your own fight (hit trade, spacing, totem pops). "Copy report for staff" puts a timestamped
+  evidence summary on your clipboard to paste into a report.
+
+During a fight the island at the top shows each new flag, then a quick tip on how to counter it.
 
 Checks (all done from what your client can see; nothing is sent to the server):
 

@@ -1,6 +1,7 @@
 package dev.pvpmod.analyzer.gui;
 
 import dev.pvpmod.analyzer.Analyzer;
+import dev.pvpmod.analyzer.Counter;
 import dev.pvpmod.analyzer.FightTracker;
 import dev.pvpmod.analyzer.Flag;
 import dev.pvpmod.config.PvpConfig;
@@ -28,11 +29,12 @@ public final class AnalyzerHud {
 
         FightTracker.Live l = FightTracker.live;
         long ms = System.currentTimeMillis();
-        boolean showFlag = l != null && l.lastFlag != null && ms - l.lastFlagAt < 3500;
+        boolean showFlag = l != null && l.lastFlag != null && ms - l.lastFlagAt < 6000;
+        boolean showTip = showFlag && ms - l.lastFlagAt > 2000;
         boolean showResult = l == null && FightTracker.lastFinished != null && ms - FightTracker.lastFinishedAt < 6000;
         boolean visible = l != null || showResult;
 
-        float tw = showFlag ? 250 : showResult ? 230 : 168;
+        float tw = showFlag ? 290 : showResult ? 230 : 168;
         float th = showFlag || showResult ? 40 : 22;
         W.to(visible ? tw : 60).update(dt);
         H.to(visible ? th : 18).update(dt);
@@ -61,13 +63,18 @@ public final class AnalyzerHud {
             float sw = GFont.drawRight(s, x + w - 10, y + 7, 8, Col.a(col, 1f), true);
             GFont.drawRight(timer(l.ticks()), x + w - 16 - sw, y + 7, 7.5f, Col.LABEL3, false);
             if (showFlag) {
+                // first what they did, then how to counter it
                 Flag f = l.lastFlag;
-                float k = Math.min(1f, (ms - l.lastFlagAt) / 250f);
+                long age = ms - l.lastFlagAt - (showTip ? 2000 : 0);
+                float k = Math.min(1f, age / 250f);
                 float yy = y + 22 + (1 - k) * 6;
-                float cw = GFont.width(f.c.title, 7, true) + 10;
-                Glass.round(x + 9, yy, cw, 12, 6, Col.a(f.c.color, 0.30f * k));
-                GFont.draw(f.c.title, x + 14, yy + 2.2f, 7, Col.a(0xFFFFFF, k), true);
-                GFont.draw(GFont.fit(f.d, w - cw - 26, 7, false), x + 14 + cw, yy + 2.2f, 7, Col.a(0xEBEBF5, 0.8f * k), false);
+                String label = showTip ? "Counter" : f.c.title;
+                int chipCol = showTip ? Col.GREEN : f.c.color;
+                String text = showTip ? Counter.shortTip(f.c) : f.d;
+                float cw = GFont.width(label, 7, true) + 10;
+                Glass.round(x + 9, yy, cw, 12, 6, Col.a(chipCol, 0.30f * k));
+                GFont.draw(label, x + 14, yy + 2.2f, 7, Col.a(0xFFFFFF, k), true);
+                GFont.draw(GFont.fit(text, w - cw - 26, 7, false), x + 14 + cw, yy + 2.2f, 7, Col.a(0xEBEBF5, 0.8f * k), false);
             }
         } else if (FightTracker.lastFinished != null) {
             var m = FightTracker.lastFinished;
