@@ -85,6 +85,11 @@ public final class DemoFight {
             op.o = opHasTotem ? "totem_of_undying" : "";
             me.m = "netherite_sword";
             me.o = "totem_of_undying";
+            // gear for the game-model replay: enchanted netherite for them, diamond for you
+            op.hd = "netherite_helmet"; op.ch = "netherite_chestplate"; op.lg = "netherite_leggings"; op.ft = "netherite_boots";
+            op.gl = 1 | 4 | 8 | 16 | 32;
+            me.hd = "diamond_helmet"; me.ch = "diamond_chestplate"; me.lg = "diamond_leggings"; me.ft = "diamond_boots";
+            me.gl = 1;
 
             Frame f = new Frame(t, me, op, 45, 70);
             r.frames.add(f);
@@ -251,8 +256,14 @@ public final class DemoFight {
             op.yw = Math.round((float) (bearing + rnd.nextGaussian() * 9) / 1.40625f) * 1.40625f;
             op.pt = flying ? 35 : 10;
             op.s = rnd.nextFloat() < 0.4f ? 1 : 0;
-            op.m = "diamond_sword";
+            op.m = flyer ? "bow" : "iron_sword";
             op.o = "totem_of_undying";
+            if (flyer) {
+                op.hd = "chainmail_helmet"; op.ch = "chainmail_chestplate"; op.lg = "chainmail_leggings"; op.ft = "chainmail_boots";
+                if (flying) op.f |= PState.USING;   // drawing the bow while floating
+            } else {
+                op.hd = "iron_helmet"; op.ch = "iron_chestplate"; op.lg = "iron_leggings"; op.ft = "iron_boots";
+            }
             op.hp = 20;
             r.frames.add(new Frame(t, me, op, 45, 60 + rnd.nextInt(20)));
             double d = Analyzer.boxDistance(op.x, op.eyeY(), op.z, seen);

@@ -24,12 +24,14 @@ class Scene3D {
     // camera basis
     protected double cx, cy, cz, fx, fy, fz, rx, ry, rz, ux, uy, uz, focal;
     protected float vx, vy, vw, vh;
+    protected float camYaw, camPitch;
 
     /** Camera at a position looking along yaw/pitch (Minecraft conventions). */
     protected void setCamera(double x, double y, double z, float yawDeg, float pitchDeg, float fovDeg,
                              float viewX, float viewY, float viewW, float viewH) {
         vx = viewX; vy = viewY; vw = viewW; vh = viewH;
         cx = x; cy = y; cz = z;
+        camYaw = yawDeg; camPitch = pitchDeg;
         double[] f = Analyzer.look(yawDeg, pitchDeg);
         fx = f[0]; fy = f[1]; fz = f[2];
         rx = -fz; ry = 0; rz = fx;          // right = forward x up

@@ -501,6 +501,16 @@ public final class FightTracker {
         s.f = f;
         s.m = id(p.getMainHandStack());
         s.o = id(p.getOffHandStack());
+        // armor and enchantment glint, for the game-model replay
+        net.minecraft.entity.EquipmentSlot[] slots = {net.minecraft.entity.EquipmentSlot.HEAD, net.minecraft.entity.EquipmentSlot.CHEST,
+            net.minecraft.entity.EquipmentSlot.LEGS, net.minecraft.entity.EquipmentSlot.FEET};
+        ItemStack[] armor = new ItemStack[4];
+        for (int i = 0; i < 4; i++) armor[i] = p.getEquippedStack(slots[i]);
+        s.hd = id(armor[0]); s.ch = id(armor[1]); s.lg = id(armor[2]); s.ft = id(armor[3]);
+        int gl = (p.getMainHandStack().hasGlint() ? 1 : 0) | (p.getOffHandStack().hasGlint() ? 2 : 0);
+        for (int i = 0; i < 4; i++) if (armor[i].hasGlint()) gl |= 4 << i;
+        s.gl = gl;
+        if (p.isUsingItem() && p.getActiveHand() == net.minecraft.util.Hand.OFF_HAND) s.f |= PState.USE_OFFHAND;
         return s;
     }
 

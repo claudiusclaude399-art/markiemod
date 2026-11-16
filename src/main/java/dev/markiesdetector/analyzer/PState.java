@@ -14,6 +14,9 @@ public class PState {
     public int f;            // flag bits
     public int s;            // swings this tick
     public String m = "", o = "";   // main hand / off hand item ids
+    public String hd = "", ch = "", lg = "", ft = "";   // armor: head, chest, legs, feet item ids
+    public int gl;           // enchantment glint bits: 1 main, 2 off, 4 head, 8 chest, 16 legs, 32 feet
+    public static final int USE_OFFHAND = 8192;   // flag bit: the item being used is in the off hand
 
     public boolean has(int bit) { return (f & bit) != 0; }
 
@@ -23,6 +26,7 @@ public class PState {
         PState p = new PState();
         p.x = x; p.y = y; p.z = z; p.yw = yw; p.pt = pt; p.hp = hp; p.ab = ab;
         p.e = e; p.h = h; p.w = w; p.f = f; p.s = s; p.m = m; p.o = o;
+        p.hd = hd; p.ch = ch; p.lg = lg; p.ft = ft; p.gl = gl;
         return p;
     }
 

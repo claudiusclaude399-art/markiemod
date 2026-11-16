@@ -66,6 +66,53 @@ final class ReplayView extends Scene3D {
         }
     }
 
+    /** Draw players with the game's own renderer (armor, items, animations), or the built-in box models. */
+    boolean useGameModels = true;
+
+    private List<PState> extrasAt(float ph) {
+        List<PState> extras = new ArrayList<>();
+        for (int k = 0; k < rec.others.size(); k++) extras.add(extra(ph, k));
+        return extras;
+    }
+
+    /** Was this player hit in the last half second (red hurt flash)? */
+    private boolean hurt(float ph, boolean mine) {
+        FightEvent.Kind k = mine ? FightEvent.Kind.HIT_ME : FightEvent.Kind.HIT_OP;
+        for (FightEvent e : rec.events) if (e.k == k && e.t <= ph && ph - e.t < 10) return true;
+        return false;
+    }
+
+    /** Real game models, far to near so nearer players are drawn on top. */
+    private void drawGamePlayers(float ph, PState me, PState op, List<PState> extras) {
+        record Actor(PState p, SkinTextures skin, String uuid, String name, float phase, float amt, float swing, boolean hurt, double depth) {}
+        List<Actor> actors = new ArrayList<>();
+        String myId = rec.meUuid == null || rec.meUuid.isEmpty() ? MinecraftClient.getInstance().getGameProfile().id().toString() : rec.meUuid;
+        double[] dm = dist(true), dop = dist(false);
+        actors.add(new Actor(me, mySkin(), myId, rec.meName, (float) (distAt(dm, ph) * 2.66),
+            (float) clamp((distAt(dm, ph) - distAt(dm, ph - 1)) * 4.5, 0, 1), swing(ph, true), hurt(ph, true), cam(me.x, me.y + 0.9, me.z)[2]));
+        if (mode != EYES) {
+            actors.add(new Actor(op, Ui.skin(rec.opUuid, rec.opName, rec.opTex, rec.opSig), rec.opUuid, rec.opName,
+                (float) (distAt(dop, ph) * 2.66), (float) clamp((distAt(dop, ph) - distAt(dop, ph - 1)) * 4.5, 0, 1),
+                swing(ph, false), hurt(ph, false), cam(op.x, op.y + 0.9, op.z)[2]));
+        }
+        for (int k = 0; k < extras.size(); k++) {
+            PState o = extras.get(k);
+            if (o == null || o.has(PState.ABSENT)) continue;
+            FightRecord.Other ot = rec.others.get(k);
+            PState prev = extra(ph - 1, k);
+            float amt = prev == null ? 0 : (float) clamp(Math.hypot(o.x - prev.x, o.z - prev.z) * 4.5, 0, 1);
+            actors.add(new Actor(o, Ui.skin(ot.uuid, ot.name, ot.tex, ot.sig), ot.uuid, ot.name, ph * 0.9f, amt, -1, false, cam(o.x, o.y + 0.9, o.z)[2]));
+        }
+        actors.sort((a, b) -> Double.compare(b.depth, a.depth));
+        for (Actor a : actors) {
+            if (a.depth < 0.6) continue;   // too close to (or behind) the camera
+            float[] feet = project(a.p.x, a.p.y, a.p.z);
+            if (feet == null) continue;
+            RealPlayers.draw(Glass.ctx(), a.p, a.skin, a.uuid, a.name, feet[0], feet[1], scaleAt(a.p.x, a.p.y + 0.9, a.p.z, 1.0),
+                camYaw, camPitch, a.phase, a.amt, a.swing, a.hurt);
+        }
+    }
+
     /** Queues the skinned models of everyone in the fight; returns the other fighters (group fights). */
     private List<PState> queuePlayers(float ph, PState me, PState op) {
         modelFaces(me, mySkin(), ph, true);
@@ -150,8 +197,10 @@ final class ReplayView extends Scene3D {
             line3(gx - R, gy, gz + i, gx + R, gy, gz + i, 0.7f, col);
         }
         if (map) queueWorld(gy);
-        List<PState> extras = queuePlayers(ph, me, op);
+        boolean real = useGameModels && RealPlayers.available();
+        List<PState> extras = real ? extrasAt(ph) : queuePlayers(ph, me, op);
         flush();
+        if (real) drawGamePlayers(ph, me, op, extras);
 
         // trails
         int iph = (int) ph;
