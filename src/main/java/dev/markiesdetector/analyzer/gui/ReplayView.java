@@ -106,10 +106,15 @@ final class ReplayView extends Scene3D {
         actors.sort((a, b) -> Double.compare(b.depth, a.depth));
         for (Actor a : actors) {
             if (a.depth < 0.6) continue;   // too close to (or behind) the camera
-            float[] feet = project(a.p.x, a.p.y, a.p.z);
-            if (feet == null) continue;
-            RealPlayers.draw(Glass.ctx(), a.p, a.skin, a.uuid, a.name, feet[0], feet[1], scaleAt(a.p.x, a.p.y + 0.9, a.p.z, 1.0),
-                camYaw, camPitch, a.phase, a.amt, a.swing, a.hurt);
+            double ph2 = a.p.h > 0 ? a.p.h : 1.8;
+            float[] feet = project(a.p.x, a.p.y, a.p.z), head = project(a.p.x, a.p.y + ph2, a.p.z);
+            if (feet == null || head == null) continue;
+            // the direction this player is seen from (not the camera's centre direction)
+            double dx = a.p.x - cx, dy = a.p.y + ph2 / 2 - cy, dz = a.p.z - cz;
+            float viewYaw = (float) Math.toDegrees(Math.atan2(-dx, dz));
+            float viewPitch = (float) Math.toDegrees(Math.atan2(-dy, Math.hypot(dx, dz)));
+            RealPlayers.draw(Glass.ctx(), a.p, a.skin, a.uuid, a.name, feet[0], feet[1], head[0], head[1],
+                viewYaw, viewPitch, a.phase, a.amt, a.swing, a.hurt);
         }
     }
 

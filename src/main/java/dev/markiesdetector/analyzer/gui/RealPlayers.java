@@ -41,6 +41,8 @@ final class RealPlayers {
     private static final Map<String, ItemStack> STACKS = new HashMap<>();
     private static ClientWorld actorWorld;
     private static boolean broken = false;
+    /** Direction of the on-screen lean correction (GUI y points down, so this is checked visually). */
+    static float ROLL_SIGN = 1f;
 
     static boolean available() {
         return !broken && MinecraftClient.getInstance().world != null;
@@ -68,13 +70,18 @@ final class RealPlayers {
     }
 
     /**
-     * Draws one player standing at screen point (feetX, feetY), {@code pxPerBlock} GUI units per block, seen from a
-     * camera with the given yaw/pitch. {@code phase}/{@code amt} drive walking, {@code swing} is 0..1 or -1.
+     * Draws one player whose feet and head project to the given screen points. {@code viewYaw}/{@code viewPitch} are
+     * the direction the camera sees this player from; {@code roll} is how far their vertical axis leans on screen
+     * (perspective), so the flat game model lines up with the 3D scene. {@code phase}/{@code amt} drive walking,
+     * {@code swing} is 0..1 or -1.
      */
     @SuppressWarnings({"unchecked", "rawtypes"})
     static void draw(DrawContext ctx, PState p, SkinTextures skin, String uuid, String name,
-                     float feetX, float feetY, float pxPerBlock, float camYaw, float camPitch,
+                     float feetX, float feetY, float headX, float headY, float viewYaw, float viewPitch,
                      float phase, float amt, float swing, boolean hurt) {
+        float h = (float) Math.hypot(headX - feetX, headY - feetY);
+        float pxPerBlock = h / Math.max(0.5f, p.h > 0 ? p.h : 1.8f);
+        float roll = (float) Math.atan2(headX - feetX, feetY - headY);   // 0 = upright on screen
         if (pxPerBlock < 1.5f || p == null) return;
         try {
             OtherClientPlayerEntity e = actor(uuid, name);
@@ -99,7 +106,7 @@ final class RealPlayers {
             ps.nameLabelPos = null;
             ps.shadowPieces.clear();
             ps.shadowRadius = 0;
-            ps.bodyYaw = PState.wrap(p.yw - camYaw);
+            ps.bodyYaw = PState.wrap(p.yw - viewYaw);
             ps.relativeHeadYaw = 0;
             ps.pitch = p.pt;
             ps.limbSwingAnimationProgress = phase;
@@ -132,13 +139,12 @@ final class RealPlayers {
                 }
             }
 
-            // orient the model the way the 3D camera sees it
-            float pitchRad = (float) Math.toRadians(camPitch);
+            // orient the model the way the 3D camera sees it: looked at from viewYaw/viewPitch, leaning by roll
+            float pitchRad = (float) Math.toRadians(viewPitch);
             Quaternionf view = new Quaternionf().rotateX(pitchRad);
-            Quaternionf rotation = new Quaternionf().rotateZ((float) Math.PI).mul(view);
-            float h = pxPerBlock * 1.8f;
-            float cx = feetX, cy = feetY - h / 2f;
-            int half = Math.max(4, Math.round(h * 0.85f));
+            Quaternionf rotation = new Quaternionf().rotateZ((float) Math.PI + ROLL_SIGN * roll).mul(view);
+            float cx = (feetX + headX) / 2f, cy = (feetY + headY) / 2f;
+            int half = Math.max(4, Math.round(h * 0.9f));
             Vector3f translation = new Vector3f(0, ps.height / 2f + 0.0625f, 0);
             ctx.addEntity(st, pxPerBlock, translation, rotation, view,
                 Math.round(cx - half), Math.round(cy - half), Math.round(cx + half), Math.round(cy + half));
