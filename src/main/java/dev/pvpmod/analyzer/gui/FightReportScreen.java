@@ -27,9 +27,14 @@ import java.util.concurrent.CompletableFuture;
 public class FightReportScreen extends GlassScreen {
     private static final String[] TABS = {"Overview", "Graphs", "Replay", "Flags", "Counter"};
 
-    private final FightMeta meta;
-    private volatile FightRecord rec;
-    private volatile Analyzer an;
+    private FightMeta meta;
+    private FightRecord rec;
+    private Analyzer an;
+    /** Everyone in this fight (one entry for a 1v1), with their loaded recordings and analyses. */
+    private final List<FightMeta> group;
+    private final FightRecord[] recs;
+    private final Analyzer[] ans;
+    private int sel = 0;
     private volatile boolean failed = false;
     private ReplayView view;
 
@@ -55,18 +60,53 @@ public class FightReportScreen extends GlassScreen {
     private float viewX, viewY, viewW, viewH, tlX, tlW, tlY = -100;
 
     public FightReportScreen(Screen parent, FightMeta meta) {
-        super("Fight vs " + meta.opName, parent);
-        this.meta = meta;
+        this(parent, List.of(meta));
+    }
+
+    /** A report for a group fight: switch between opponents with the pills under the header. */
+    public FightReportScreen(Screen parent, List<FightMeta> group) {
+        super("Fight vs " + group.get(0).opName, parent);
+        this.group = List.copyOf(group);
+        this.meta = group.get(0);
+        this.recs = new FightRecord[group.size()];
+        this.ans = new Analyzer[group.size()];
         CompletableFuture.runAsync(() -> {
-            FightRecord r = FightStore.load(meta.id);
-            if (r == null) { failed = true; return; }
-            Analyzer a = Analyzer.run(r);
-            an = a;
-            rec = r;
+            for (int i = 0; i < this.group.size(); i++) {
+                FightRecord r = FightStore.load(this.group.get(i).id);
+                if (r == null) { if (i == 0) failed = true; continue; }
+                Analyzer a = Analyzer.run(r);
+                synchronized (this) { ans[i] = a; recs[i] = r; }
+            }
         });
     }
 
-    private boolean ready() { return rec != null && an != null; }
+    private boolean ready() {
+        if (rec == null) {
+            synchronized (this) {
+                if (recs[sel] != null && ans[sel] != null) { rec = recs[sel]; an = ans[sel]; }
+            }
+        }
+        return rec != null && an != null;
+    }
+
+    /** Show another opponent of a group fight. */
+    private void select(int i) {
+        if (i == sel) return;
+        sel = i;
+        meta = group.get(i);
+        rec = null;
+        an = null;
+        view = null;
+        lab = null;
+        selected = null;
+        playing = false;
+        playhead = 0;
+        ringFill.snap(0f);
+        reveal.snap(0f);
+        tabFade.snap(0f).to(1f);
+        flagScroll.snap(0f);
+        counterScroll.snap(0f);
+    }
 
     private void setTab(int t) {
         if (t == tab) return;
@@ -175,6 +215,27 @@ public class FightReportScreen extends GlassScreen {
         setTab(segmented("tabs", TABS, tab, segX, segY, segW, 22));
 
         float cx = x0 + 12, cy = segY + 32, cw = pw - 24, ch = y0 + ph - 12 - cy;
+        if (group.size() > 1) {
+            float py = cy - 2;
+            GFont.draw("OPPONENTS", x0 + 16, py + 6, 6.5f, Col.LABEL3, true);
+            float px = x0 + 70;
+            for (int i = 0; i < group.size(); i++) {
+                FightMeta m = group.get(i);
+                String label = m.opName + "  " + Math.round(m.score) + "%";
+                float pwid = GFont.width(label, 7.5f, true) + 32;
+                boolean on = i == sel;
+                Spring hs = spring("pill" + i, 0f);
+                hs.to(hover(px, py, pwid, 18) ? 1f : 0f);
+                int col = Col.score(m.score);
+                Glass.button(px, py, pwid, 18, 9, on ? col : 0x2C2C2E, on ? 0.45f : 0.3f, hs.get());
+                Ui.head(Ui.skin(m.opUuid, m.opName, m.opTex, m.opSig), px + 4, py + 3, 12);
+                GFont.draw(label, px + 22, py + 5, 7.5f, Col.LABEL, true);
+                if (clicked(px, py, pwid, 18)) select(i);
+                px += pwid + 6;
+            }
+            cy += 24;
+            ch -= 24;
+        }
 
         if (!ready()) {
             float mx = x0 + pw / 2, my = y0 + ph / 2;
@@ -497,7 +558,8 @@ public class FightReportScreen extends GlassScreen {
             GFont.draw("to the next suspicious moment.", x + 12, yy + 21, 7, Col.LABEL3, false);
         }
         for (Flag f : near) {
-            float ch = 46;
+            int lines = Math.min(2, wrapLines(f.d, w - 28, 7.5f, true).size());
+            float ch = 36 + lines * 10.5f;
             if (yy + ch > y + h - 4) break;
             boolean sel = f == selected;
             Glass.round(x + 8, yy, w - 16, ch, 12, Col.a(f.c.color, sel ? 0.20f : 0.10f), Col.a(f.c.color, sel ? 0.10f : 0.04f));

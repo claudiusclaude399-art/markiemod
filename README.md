@@ -19,15 +19,22 @@ the rest of the mod still loads.
 ![Overview](docs/overview.jpg)
 ![Replay](docs/replay.jpg)
 ![Their eyes](docs/replay-eyes.jpg)
+![Group fight](docs/group-replay.jpg)
 ![Graphs](docs/graphs.jpg)
 ![Counter Lab](docs/counter-lab.jpg)
 ![Counter](docs/counter.jpg)
 
 Press **J** (or `/pvpmod fights`, or the "Fight Analyzer" button in `/pvpmod`) to open it.
-Every 1v1 is recorded automatically: the recording starts the first time you hit a player or a player hits
+Every fight is recorded automatically, against up to **4 opponents at once** (2v2s, FFAs, getting teamed): the recording starts the first time you hit a player or a player hits
 you, and stops when someone dies, they leave, or nobody hits for 20 seconds (changeable in Settings).
-While recording, a "dynamic island" at the top of the screen shows the opponent, the live suspicion score,
-and each new flag as it happens.
+While recording, a "dynamic island" at the top of the screen shows each opponent (one row per player) with their
+live suspicion score, and each new flag as it happens.
+
+Group fights: every opponent gets their own recording and cheat analysis, judged only on what they did to you
+(hits from teammates or other players count as knockback/explosions, not as yours). Fights that overlap are saved
+as one group: the list shows a single card with everyone's heads and scores, the report has a row of opponent
+pills to switch between them, and the replay shows all the fighters at once (the one you're looking at in red,
+the others in purple). `/pvpmod demo4` or "Try a 4-player demo" shows a fight against three players at once.
 
 Each fight gets a report with four tabs:
 

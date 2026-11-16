@@ -5,6 +5,8 @@ public class Frame {
     public int t;
     public PState me, op;
     public int mp, opg;   // my ping, opponent ping (ms)
+    /** The other fighters in a group fight (same order as {@link FightRecord#others}); null in a 1v1. */
+    public java.util.List<PState> x;
 
     public Frame() {}
 

@@ -27,15 +27,19 @@ public final class AnalyzerHud {
         last = now;
         Glass.tick();
 
-        FightTracker.Live l = FightTracker.live;
+        java.util.List<FightTracker.Live> ls = new java.util.ArrayList<>(FightTracker.lives.values());
+        FightTracker.Live l = null;   // the one with the newest flag
+        for (FightTracker.Live c : ls) if (c.lastFlag != null && (l == null || c.lastFlagAt > l.lastFlagAt)) l = c;
         long ms = System.currentTimeMillis();
-        boolean showFlag = l != null && l.lastFlag != null && ms - l.lastFlagAt < 6000;
+        boolean recording = !ls.isEmpty();
+        boolean showFlag = l != null && ms - l.lastFlagAt < 6000;
         boolean showTip = showFlag && ms - l.lastFlagAt > 2000;
-        boolean showResult = l == null && FightTracker.lastFinished != null && ms - FightTracker.lastFinishedAt < 6000;
-        boolean visible = l != null || showResult;
+        boolean showResult = !recording && FightTracker.lastFinished != null && ms - FightTracker.lastFinishedAt < 6000;
+        boolean visible = recording || showResult;
+        int rows = Math.max(1, ls.size());
 
-        float tw = showFlag ? 290 : showResult ? 230 : 168;
-        float th = showFlag || showResult ? 40 : 22;
+        float tw = showFlag ? 290 : showResult ? 230 : rows > 1 ? 190 : 168;
+        float th = recording ? 22 + (rows - 1) * 15 + (showFlag ? 18 : 0) : showResult ? 40 : 22;
         W.to(visible ? tw : 60).update(dt);
         H.to(visible ? th : 18).update(dt);
         A.to(visible ? 1f : 0f).update(dt);
@@ -47,30 +51,37 @@ public final class AnalyzerHud {
         float x = (ctx.getScaledWindowWidth() - w) / 2f, y = 5;
         float old = Glass.alpha;
         Glass.alpha = Math.max(0, Math.min(1, a));
-        Glass.shadow(x, y, w, h, h / 2f, 8, Col.a(0, 0.35f));
+        Glass.shadow(x, y, w, h, Math.min(h / 2f, 14), 8, Col.a(0, 0.35f));
         Glass.round(x, y, w, h, Math.min(h / 2f, 14), Col.a(0x000000, 0.82f), Col.a(0x0A0A0C, 0.86f));
         Glass.rim(x, y, w, h, Math.min(h / 2f, 14), Col.a(0xFFFFFF, 0.22f), Col.a(0xFFFFFF, 0.06f));
 
         ctx.enableScissor((int) x + 1, (int) y, (int) (x + w) - 1, (int) (y + h));
-        if (l != null) {
+        if (recording) {
+            // one row per opponent: name, fight time, live suspicion
             float pulse = 0.5f + 0.5f * (float) Math.sin(Glass.time * 5f);
-            Glass.glow(x + 13, y + 11, 7 + 3 * pulse, Col.a(Col.RED, 0.5f));
-            Glass.dot(x + 13, y + 11, 3.2f, Col.a(Col.RED, 1f));
-            GFont.draw(GFont.fit(l.rec.opName, w - 110, 8, true), x + 22, y + 7, 8, Col.LABEL, true);
-            float sc = l.analyzer.score();
-            int col = Col.score(sc);
-            String s = Math.round(sc) + "%";
-            float sw = GFont.drawRight(s, x + w - 10, y + 7, 8, Col.a(col, 1f), true);
-            GFont.drawRight(timer(l.ticks()), x + w - 16 - sw, y + 7, 7.5f, Col.LABEL3, false);
+            for (int i = 0; i < ls.size(); i++) {
+                FightTracker.Live r = ls.get(i);
+                float ry = y + 7 + i * 15;
+                if (i == 0) {
+                    Glass.glow(x + 13, ry + 4, 7 + 3 * pulse, Col.a(Col.RED, 0.5f));
+                    Glass.dot(x + 13, ry + 4, 3.2f, Col.a(Col.RED, 1f));
+                } else {
+                    Glass.dot(x + 13, ry + 4, 2.2f, Col.a(Col.RED, 0.8f));
+                }
+                GFont.draw(GFont.fit(r.rec.opName, w - 110, 8, true), x + 22, ry, 8, Col.LABEL, true);
+                float sc = r.analyzer.score();
+                float sw = GFont.drawRight(Math.round(sc) + "%", x + w - 10, ry, 8, Col.a(Col.score(sc), 1f), true);
+                GFont.drawRight(timer(r.ticks()), x + w - 16 - sw, ry, 7.5f, Col.LABEL3, false);
+            }
             if (showFlag) {
                 // first what they did, then how to counter it
                 Flag f = l.lastFlag;
                 long age = ms - l.lastFlagAt - (showTip ? 2000 : 0);
                 float k = Math.min(1f, age / 250f);
-                float yy = y + 22 + (1 - k) * 6;
+                float yy = y + 22 + (rows - 1) * 15 + (1 - k) * 6;
                 String label = showTip ? "Counter" : f.c.title;
                 int chipCol = showTip ? Col.GREEN : f.c.color;
-                String text = showTip ? Counter.shortTip(f.c) : f.d;
+                String text = (rows > 1 && !showTip ? l.rec.opName + ": " : "") + (showTip ? Counter.shortTip(f.c) : f.d);
                 float cw = GFont.width(label, 7, true) + 10;
                 Glass.round(x + 9, yy, cw, 12, 6, Col.a(chipCol, 0.30f * k));
                 GFont.draw(label, x + 14, yy + 2.2f, 7, Col.a(0xFFFFFF, k), true);

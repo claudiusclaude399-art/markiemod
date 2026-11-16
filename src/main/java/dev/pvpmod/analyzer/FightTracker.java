@@ -33,22 +33,28 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
 /**
- * Watches combat and records 1v1 fights. A fight starts the first time you hit a player or a player hits you,
- * and ends on a death, when they leave, or after a quiet period. Packet hooks come from ClientPlayNetworkHandlerMixin.
+ * Watches combat and records fights against up to {@value #MAX} opponents at once (1v1s, 2v2s, FFAs, getting
+ * teamed). A fight with a player starts the first time you hit them or they hit you, and ends on a death, when
+ * they leave, or after a quiet period. Every opponent gets their own recording and analysis; fights that overlap
+ * share a group id and store each other's positions so the replay can show everyone.
+ * Packet hooks come from ClientPlayNetworkHandlerMixin.
  */
 public final class FightTracker {
     private FightTracker() {}
 
+    /** Most opponents analysed at the same time. */
+    public static final int MAX = 4;
     private static final int PREROLL = 60;
     private static final String TOTEM = "totem_of_undying", CRYSTAL = "end_crystal";
 
-    /** The fight currently being recorded (null when idle). */
-    public static Live live;
+    /** Fights currently being recorded, oldest first. */
+    public static final Map<UUID, Live> lives = new LinkedHashMap<>();
     /** Set when a fight just finished, for the HUD's result animation. */
     public static FightRecord.FightMeta lastFinished;
     public static long lastFinishedAt;
@@ -58,6 +64,7 @@ public final class FightTracker {
     private static final ArrayDeque<PState> meHistory = new ArrayDeque<>();
     private static final Map<UUID, ArrayDeque<PState>> history = new HashMap<>();
     private static ClientWorld lastWorld;
+    private static String groupId = "";
 
     public static final class Live {
         public final FightRecord rec = new FightRecord();
@@ -75,6 +82,7 @@ public final class FightTracker {
         public Flag lastFlag;
         public long lastFlagAt;
         int seenFlags = 0;
+        long lastActive = System.currentTimeMillis();
 
         Live(PlayerEntity op) {
             opUuid = op.getUuid();
@@ -86,6 +94,26 @@ public final class FightTracker {
         }
 
         public int ticks() { return t; }
+
+        void combat() {
+            lastCombat = t;
+            lastActive = System.currentTimeMillis();
+        }
+    }
+
+    /** True while at least one fight is recording. */
+    public static boolean recording() { return !lives.isEmpty(); }
+
+    /** The fight you were most recently trading hits in. */
+    public static Live primary() {
+        Live best = null;
+        for (Live l : lives.values()) if (best == null || l.lastActive > best.lastActive) best = l;
+        return best;
+    }
+
+    private static Live byEntity(int id) {
+        for (Live l : lives.values()) if (l.opId == id) return l;
+        return null;
     }
 
     // ------------------------------------------------------------------ packet hooks
@@ -99,8 +127,8 @@ public final class FightTracker {
 
         if (victim == me && cause instanceof PlayerEntity op && op != me) {
             Live l = ensure(op);
-            if (l == null || !l.opUuid.equals(op.getUuid())) return;
-            l.lastCombat = l.t;
+            if (l == null) return;
+            l.combat();
             if (melee) {
                 FightEvent e = new FightEvent(l.t, FightEvent.Kind.HIT_ME).at(op.getX(), op.getY(), op.getZ());
                 e.b = !lineOfSight(mc.world, op, me, ping(mc, me.getUuid()) + ping(mc, op.getUuid()));
@@ -110,8 +138,8 @@ public final class FightTracker {
             }
         } else if (cause == me && victim instanceof PlayerEntity op && op != me) {
             Live l = ensure(op);
-            if (l == null || !l.opUuid.equals(op.getUuid())) return;
-            l.lastCombat = l.t;
+            if (l == null) return;
+            l.combat();
             if (melee) {
                 FightEvent e = new FightEvent(l.t, FightEvent.Kind.HIT_OP).at(op.getX(), op.getY(), op.getZ());
                 e.b = blockedBehind(mc.world, op, me);
@@ -119,83 +147,95 @@ public final class FightTracker {
             } else {
                 l.pending.add(new FightEvent(l.t, FightEvent.Kind.BLAST_OP).at(op.getX(), op.getY(), op.getZ()));
             }
-        } else if (live != null && victim != null && victim.getId() == live.opId) {
-            live.pending.add(new FightEvent(live.t, FightEvent.Kind.BLAST_OP).at(victim.getX(), victim.getY(), victim.getZ()));
+        } else if (victim != null) {
+            // hit by someone else (a teammate of yours, another opponent, an explosion): knockback isn't from you
+            Live l = byEntity(victim.getId());
+            if (l != null) l.pending.add(new FightEvent(l.t, FightEvent.Kind.BLAST_OP).at(victim.getX(), victim.getY(), victim.getZ()));
         }
     }
 
     public static void onAnimation(EntityAnimationS2CPacket p) {
-        if (live == null) return;
         int a = p.getAnimationId();
-        if (p.getEntityId() == live.opId && (a == EntityAnimationS2CPacket.SWING_MAIN_HAND || a == EntityAnimationS2CPacket.SWING_OFF_HAND)) {
-            live.pendingSwings++;
-        }
+        if (a != EntityAnimationS2CPacket.SWING_MAIN_HAND && a != EntityAnimationS2CPacket.SWING_OFF_HAND) return;
+        Live l = byEntity(p.getEntityId());
+        if (l != null) l.pendingSwings++;
     }
 
     public static void onStatus(EntityStatusS2CPacket p) {
         MinecraftClient mc = MinecraftClient.getInstance();
-        if (live == null || mc.world == null || mc.player == null) return;
+        if (lives.isEmpty() || mc.world == null || mc.player == null) return;
         Entity e = p.getEntity(mc.world);
         if (e == null) return;
         byte s = p.getStatus();
-        boolean isOp = e.getId() == live.opId, isMe = e == mc.player;
+        Live l = byEntity(e.getId());
+        boolean isMe = e == mc.player;
         if (s == 35) {   // totem pop
-            if (isOp) {
-                live.pending.add(new FightEvent(live.t, FightEvent.Kind.POP_OP).at(e.getX(), e.getY(), e.getZ()));
-                live.lastCombat = live.t;
+            if (l != null) {
+                l.pending.add(new FightEvent(l.t, FightEvent.Kind.POP_OP).at(e.getX(), e.getY(), e.getZ()));
+                l.combat();
                 PlayerEntity op = (PlayerEntity) e;
                 int held = (isTotem(op.getMainHandStack()) ? 1 : 0) + (isTotem(op.getOffHandStack()) ? 1 : 0);
-                if (held <= 1) { live.popTick = live.t; live.popSawEmpty = false; }
+                if (held <= 1) { l.popTick = l.t; l.popSawEmpty = false; }
             } else if (isMe) {
-                live.pending.add(new FightEvent(live.t, FightEvent.Kind.POP_ME).at(e.getX(), e.getY(), e.getZ()));
-                live.lastCombat = live.t;
+                for (Live x : lives.values()) {
+                    x.pending.add(new FightEvent(x.t, FightEvent.Kind.POP_ME).at(e.getX(), e.getY(), e.getZ()));
+                    x.combat();
+                }
             }
-        } else if (s == 3) {  // death
-            if (isOp && live.deathAt < 0) {
-                live.pending.add(new FightEvent(live.t, FightEvent.Kind.DEATH_OP).at(e.getX(), e.getY(), e.getZ()));
-                live.rec.result = "WIN";
-                live.deathAt = live.t;
-            }
+        } else if (s == 3 && l != null && l.deathAt < 0) {  // death
+            l.pending.add(new FightEvent(l.t, FightEvent.Kind.DEATH_OP).at(e.getX(), e.getY(), e.getZ()));
+            l.rec.result = "WIN";
+            l.deathAt = l.t;
         }
     }
 
     public static void onEntityLoad(Entity e) {
-        if (live == null || !(e instanceof EndCrystalEntity)) return;
+        if (lives.isEmpty() || !(e instanceof EndCrystalEntity)) return;
         MinecraftClient mc = MinecraftClient.getInstance();
         if (mc.player == null || mc.world == null) return;
-        Entity op = mc.world.getEntityById(live.opId);
-        if (!(op instanceof PlayerEntity p)) return;
-        double dOp = p.squaredDistanceTo(e), dMe = mc.player.squaredDistanceTo(e);
-        boolean holding = p.getMainHandStack().isOf(net.minecraft.item.Items.END_CRYSTAL) || p.getOffHandStack().isOf(net.minecraft.item.Items.END_CRYSTAL);
-        if (dOp > 36 || dOp > dMe || !holding) return;
-        PState s = snapshot(p, mc.world, true);
-        double err = Analyzer.angleTo(s, e.getX(), e.getY(), e.getZ());
-        live.crystals.put(e.getId(), new double[]{live.t, err});
+        // attribute the crystal to the closest tracked opponent holding crystals
+        Live best = null;
+        PlayerEntity bestP = null;
+        double bestD = 36;
+        for (Live l : lives.values()) {
+            if (!(mc.world.getEntityById(l.opId) instanceof PlayerEntity p)) continue;
+            boolean holding = p.getMainHandStack().isOf(net.minecraft.item.Items.END_CRYSTAL) || p.getOffHandStack().isOf(net.minecraft.item.Items.END_CRYSTAL);
+            double d = p.squaredDistanceTo(e);
+            if (holding && d <= bestD && d <= mc.player.squaredDistanceTo(e)) { best = l; bestP = p; bestD = d; }
+        }
+        if (best == null) return;
+        PState s = snapshot(bestP, mc.world, true);
+        best.crystals.put(e.getId(), new double[]{best.t, Analyzer.angleTo(s, e.getX(), e.getY(), e.getZ())});
     }
 
     public static void onEntityUnload(Entity e) {
-        if (live == null || !(e instanceof EndCrystalEntity)) return;
-        double[] c = live.crystals.remove(e.getId());
-        if (c == null) return;
-        FightEvent ev = new FightEvent(live.t, FightEvent.Kind.CRYSTAL_OP).at(e.getX(), e.getY(), e.getZ());
-        ev.v = live.t - c[0];
-        ev.d = c[1];
-        live.pending.add(ev);
+        if (lives.isEmpty() || !(e instanceof EndCrystalEntity)) return;
+        for (Live l : lives.values()) {
+            double[] c = l.crystals.remove(e.getId());
+            if (c == null) continue;
+            FightEvent ev = new FightEvent(l.t, FightEvent.Kind.CRYSTAL_OP).at(e.getX(), e.getY(), e.getZ());
+            ev.v = l.t - c[0];
+            ev.d = c[1];
+            l.pending.add(ev);
+        }
     }
 
     // ------------------------------------------------------------------ lifecycle
     private static Live ensure(PlayerEntity op) {
-        if (live != null) return live;
+        Live l = lives.get(op.getUuid());
+        if (l != null) return l;
         if (forcedTarget != null && !forcedTarget.equalsIgnoreCase(op.getGameProfile().name())) return null;
-        start(op);
-        return live;
+        if (lives.size() >= MAX) return null;
+        return start(op);
     }
 
-    private static void start(PlayerEntity op) {
+    private static Live start(PlayerEntity op) {
         MinecraftClient mc = MinecraftClient.getInstance();
+        if (lives.isEmpty()) groupId = "g" + System.currentTimeMillis();
         Live l = new Live(op);
         l.rec.start = System.currentTimeMillis();
         l.rec.id = new SimpleDateFormat("yyyyMMdd-HHmmss").format(new Date(l.rec.start)) + "-" + op.getGameProfile().name().replaceAll("[^A-Za-z0-9_]", "");
+        l.rec.groupId = groupId;
         l.rec.meUuid = mc.player.getUuid().toString();
         l.rec.meName = mc.player.getGameProfile().name();
         String[] meTex = textures(mc, mc.player), opTex = textures(mc, op);
@@ -203,6 +243,14 @@ public final class FightTracker {
         l.rec.opTex = opTex[0]; l.rec.opSig = opTex[1];
         l.rec.server = mc.getCurrentServerEntry() != null ? mc.getCurrentServerEntry().address : (mc.isInSingleplayer() ? "Singleplayer" : "");
         l.rec.dim = mc.world.getRegistryKey().getValue().toString();
+
+        // join the group: everyone already fighting becomes an "other" for the newcomer and vice versa
+        for (Live other : lives.values()) {
+            PlayerEntity op2 = mc.world.getPlayerByUuid(other.opUuid);
+            String[] tx = op2 == null ? new String[]{other.rec.opTex, other.rec.opSig} : textures(mc, op2);
+            l.rec.others.add(new FightRecord.Other(other.rec.opUuid, other.rec.opName, tx[0], tx[1]));
+            other.rec.others.add(new FightRecord.Other(l.rec.opUuid, l.rec.opName, opTex[0], opTex[1]));
+        }
 
         // pre-roll: the moments before the first hit
         ArrayDeque<PState> oh = history.get(op.getUuid());
@@ -214,22 +262,23 @@ public final class FightTracker {
             l.rec.frames.add(new Frame(l.t++, m, o, ping(mc, mc.player.getUuid()), ping(mc, op.getUuid())));
         }
         l.rec.preroll = n;
-        l.lastCombat = l.t;
-        live = l;
+        l.combat();
+        lives.put(op.getUuid(), l);
+        return l;
     }
 
     public static void tick(MinecraftClient mc) {
         ClientWorld world = mc.world;
         ClientPlayerEntity me = mc.player;
         if (world != lastWorld) {
-            if (live != null) end(live.rec.result.equals("END") ? "LEFT" : live.rec.result);
+            for (Live l : new ArrayList<>(lives.values())) endLive(l, l.rec.result.equals("END") ? "LEFT" : l.rec.result);
             meHistory.clear();
             history.clear();
             lastWorld = world;
         }
         if (world == null || me == null) return;
         if (!PvpConfig.get().analyzerEnabled) {
-            if (live != null) end("END");
+            end("END");
             return;
         }
 
@@ -241,48 +290,72 @@ public final class FightTracker {
             push(history.computeIfAbsent(p.getUuid(), k -> new ArrayDeque<>()), snapshot(p, world, true));
         }
         history.keySet().removeIf(u -> world.getPlayerByUuid(u) == null);
+        if (lives.isEmpty()) return;
 
-        Live l = live;
-        if (l == null) return;
-        PlayerEntity op = world.getPlayerByUuid(l.opUuid);
-        PState os;
-        if (op == null || op.isRemoved()) {
-            l.absentFor++;
-            os = l.rec.frames.isEmpty() ? new PState() : l.rec.frames.get(l.rec.frames.size() - 1).op.copy();
-            os.f |= PState.ABSENT;
-            os.s = 0;
-        } else {
-            l.absentFor = 0;
-            l.opId = op.getId();
-            os = snapshot(op, world, true);
-            os.s = l.pendingSwings;
-            trackTotem(l, os);
+        // everyone in the fight this tick
+        Map<UUID, PState> now = new HashMap<>();
+        for (Live l : lives.values()) {
+            PlayerEntity op = world.getPlayerByUuid(l.opUuid);
+            PState os;
+            if (op == null || op.isRemoved()) {
+                l.absentFor++;
+                os = l.rec.frames.isEmpty() ? new PState() : l.rec.frames.get(l.rec.frames.size() - 1).op.copy();
+                os.f |= PState.ABSENT;
+                os.s = 0;
+            } else {
+                l.absentFor = 0;
+                l.opId = op.getId();
+                os = snapshot(op, world, true);
+                os.s = l.pendingSwings;
+                trackTotem(l, os);
+            }
+            l.pendingSwings = 0;
+            now.put(l.opUuid, os);
         }
-        l.pendingSwings = 0;
-        l.rec.frames.add(new Frame(l.t, meNow, os, ping(mc, me.getUuid()), ping(mc, l.opUuid)));
-        for (FightEvent e : l.pending) e.t = l.t;
-        l.rec.events.addAll(l.pending);
-        l.pending.clear();
-        l.analyzer.step();
-        if (l.analyzer.flags.size() > l.seenFlags) {
-            l.lastFlag = l.analyzer.flags.get(l.analyzer.flags.size() - 1);
-            l.lastFlagAt = System.currentTimeMillis();
-            l.seenFlags = l.analyzer.flags.size();
-        }
-        l.t++;
 
-        // end conditions
-        if (me.isDead() || me.getHealth() <= 0) {
-            if (l.deathAt < 0) {
+        boolean meDead = me.isDead() || me.getHealth() <= 0;
+        for (Live l : new ArrayList<>(lives.values())) {
+            Frame f = new Frame(l.t, meNow, now.get(l.opUuid), ping(mc, me.getUuid()), ping(mc, l.opUuid));
+            if (!l.rec.others.isEmpty()) {
+                f.x = new ArrayList<>(l.rec.others.size());
+                for (FightRecord.Other o : l.rec.others) f.x.add(otherState(world, o, now));
+            }
+            l.rec.frames.add(f);
+            for (FightEvent e : l.pending) e.t = l.t;
+            l.rec.events.addAll(l.pending);
+            l.pending.clear();
+            l.analyzer.step();
+            if (l.analyzer.flags.size() > l.seenFlags) {
+                l.lastFlag = l.analyzer.flags.get(l.analyzer.flags.size() - 1);
+                l.lastFlagAt = System.currentTimeMillis();
+                l.seenFlags = l.analyzer.flags.size();
+            }
+            l.t++;
+
+            // end conditions
+            if (meDead && l.deathAt < 0) {
                 l.rec.events.add(new FightEvent(l.t, FightEvent.Kind.DEATH_ME).at(me.getX(), me.getY(), me.getZ()));
                 l.rec.result = "LOSS";
                 l.deathAt = l.t;
             }
+            if (l.deathAt >= 0 && l.t - l.deathAt > 30) endLive(l, l.rec.result);
+            else if (l.absentFor > 100) endLive(l, "LEFT");
+            else if (l.t - l.lastCombat > PvpConfig.get().analyzerTimeout * 20) endLive(l, "END");
+            else if (l.t > 20 * 60 * 15) endLive(l, "END");
         }
-        if (l.deathAt >= 0 && l.t - l.deathAt > 30) end(l.rec.result);
-        else if (l.absentFor > 100) end("LEFT");
-        else if (l.t - l.lastCombat > PvpConfig.get().analyzerTimeout * 20) end("END");
-        else if (l.t > 20 * 60 * 15) end("END");
+    }
+
+    /** Where another fighter of the group is this tick (tracked or not any more). */
+    private static PState otherState(ClientWorld world, FightRecord.Other o, Map<UUID, PState> now) {
+        UUID id;
+        try { id = UUID.fromString(o.uuid); } catch (Exception e) { PState a = new PState(); a.f = PState.ABSENT; return a; }
+        PState s = now.get(id);
+        if (s != null) { s = s.copy(); s.s = 0; return s; }
+        PlayerEntity p = world.getPlayerByUuid(id);
+        if (p != null) return snapshot(p, world, true);
+        PState a = new PState();
+        a.f = PState.ABSENT;
+        return a;
     }
 
     private static void trackTotem(Live l, PState os) {
@@ -306,11 +379,14 @@ public final class FightTracker {
         }
     }
 
-    /** Stop recording, analyse and save. */
+    /** Stop every recording, analyse and save. */
     public static void end(String result) {
-        Live l = live;
-        live = null;
-        if (l == null) return;
+        for (Live l : new ArrayList<>(lives.values())) endLive(l, result);
+    }
+
+    /** Stop one recording, analyse and save it. */
+    public static void endLive(Live l, String result) {
+        if (lives.remove(l.opUuid) == null) return;
         l.rec.result = result;
         l.analyzer.step();
         l.analyzer.finish();
@@ -319,9 +395,6 @@ public final class FightTracker {
         lastFinished = meta;
         lastFinishedAt = System.currentTimeMillis();
         if (PvpConfig.get().analyzerSave) FightStore.save(l.rec, meta);
-        else {
-            FightStore.list();
-        }
         MinecraftClient mc = MinecraftClient.getInstance();
         if (mc.player != null && PvpConfig.get().analyzerChat) {
             int sc = Math.round(meta.score);

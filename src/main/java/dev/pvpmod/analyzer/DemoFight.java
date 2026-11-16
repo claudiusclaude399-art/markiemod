@@ -1,5 +1,7 @@
 package dev.pvpmod.analyzer;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Random;
 
 /**
@@ -138,5 +140,107 @@ public final class DemoFight {
         FightRecord.FightMeta m = r.meta(a);
         FightStore.save(r, m);
         return m;
+    }
+
+    /**
+     * A 4-player fight: you against the demo cheater, a legit player and a flying speed cheater at the same time.
+     * Returns the three recordings, which share a group id and store each other's positions.
+     */
+    public static List<FightRecord> createGroup() {
+        FightRecord a = create();
+        a.result = "LOSS";
+        FightRecord b = companion(a, "Demo_Legit", "1f3d7b2e-4c11-4e4a-9a40-7b52b8a7c001", 2.1, false, 11);
+        FightRecord c = companion(a, "Demo_Flyer", "5c0a91d4-8e2f-4b7a-b3f1-2d6e9c4a0002", 4.2, true, 23);
+        List<FightRecord> all = List.of(a, b, c);
+        String group = "g-demo-" + a.start;
+        for (FightRecord r : all) {
+            r.groupId = group;
+            r.id = r.id + "-" + r.opName;
+            for (FightRecord o : all) if (o != r) r.others.add(new FightRecord.Other(o.opUuid, o.opName, "", ""));
+        }
+        for (int t = 0; t < a.frames.size(); t++) {
+            for (FightRecord r : all) {
+                List<PState> x = new ArrayList<>();
+                for (FightRecord o : all) if (o != r) x.add(o.frames.get(t).op);
+                r.frames.get(t).x = x;
+            }
+        }
+        return all;
+    }
+
+    /** Another opponent fighting you at the same time as the demo cheater. */
+    private static FightRecord companion(FightRecord base, String name, String uuid, double angle, boolean flyer, long seed) {
+        Random rnd = new Random(seed);
+        FightRecord r = new FightRecord();
+        r.start = base.start;
+        r.id = "demo-" + base.start;
+        r.opName = name;
+        r.opUuid = uuid;
+        r.server = base.server;
+        r.dim = base.dim;
+        r.result = "END";
+        r.preroll = base.preroll;
+        int n = base.frames.size();
+        // pass 1: movement. They chase a spot next to you, at sprint speed at most (the flyer cheats past that)
+        double px = base.frames.get(0).me.x + Math.sin(angle) * 3, pz = base.frames.get(0).me.z + Math.cos(angle) * 3;
+        double[][] pos = new double[n][3];
+        for (int t = 0; t < n; t++) {
+            PState me = base.frames.get(t).me;
+            double a = angle + t / 90.0;
+            double rad = flyer ? 3.6 : 2.6 + 0.4 * Math.sin(t / 47.0);
+            double tx = me.x + Math.sin(a) * rad, tz = me.z + Math.cos(a) * rad;
+            double dx = tx - px, dz = tz - pz, d = Math.hypot(dx, dz);
+            boolean burst = flyer && t >= 60 && t < 120;
+            double max = burst ? 0.85 : 0.27;
+            if (burst) { px += 0.85; }
+            else if (d > 1e-6) { double k = Math.min(1, max / d); px += dx * k; pz += dz * k; }
+            boolean flying = flyer && (t % 400) > 150 && (t % 400) < 330;
+            pos[t][0] = px; pos[t][1] = flying ? 66.5 : 64; pos[t][2] = pz;
+        }
+        // pass 2: aim, clicks, hits
+        int lastHit = -100;
+        for (int t = 0; t < n; t++) {
+            PState me = base.frames.get(t).me;
+            PState op = new PState();
+            op.x = pos[t][0]; op.y = pos[t][1]; op.z = pos[t][2];
+            boolean flying = op.y > 64;
+            op.f = flying ? PState.SPRINT : PState.GROUND | PState.SPRINT;
+            PState seen = t >= 4 ? base.frames.get(t - 4).me : me;
+            double bearing = Math.toDegrees(Math.atan2(-(seen.x - op.x), seen.z - op.z));
+            op.yw = Math.round((float) (bearing + rnd.nextGaussian() * 9) / 1.40625f) * 1.40625f;
+            op.pt = flying ? 35 : 10;
+            op.s = rnd.nextFloat() < 0.4f ? 1 : 0;
+            op.m = "diamond_sword";
+            op.o = "totem_of_undying";
+            op.hp = 20;
+            r.frames.add(new Frame(t, me, op, 45, 60 + rnd.nextInt(20)));
+            double d = Analyzer.boxDistance(op.x, op.eyeY(), op.z, seen);
+            if (t - lastHit > 14 && d <= 2.9 && Analyzer.aimError(op, seen) < 30 && rnd.nextFloat() < 0.3f) {
+                lastHit = t;
+                r.events.add(new FightEvent(t, FightEvent.Kind.HIT_ME).at(op.x, op.y, op.z));
+            }
+        }
+        return r;
+    }
+
+    /** Create, analyse and save the 4-player demo. Returns the metas, worst first. */
+    public static List<FightRecord.FightMeta> saveGroupDemo() {
+        var mc = net.minecraft.client.MinecraftClient.getInstance();
+        var me = mc.getGameProfile();
+        List<FightRecord.FightMeta> metas = new ArrayList<>();
+        for (FightRecord r : createGroup()) {
+            r.meUuid = me.id().toString();
+            r.meName = me.name();
+            for (var prop : me.properties().get("textures")) {
+                r.meTex = prop.value();
+                r.meSig = prop.signature() == null ? "" : prop.signature();
+            }
+            Analyzer a = Analyzer.run(r);
+            FightRecord.FightMeta m = r.meta(a);
+            FightStore.save(r, m);
+            metas.add(m);
+        }
+        metas.sort((x, y) -> Float.compare(y.score, x.score));
+        return metas;
     }
 }

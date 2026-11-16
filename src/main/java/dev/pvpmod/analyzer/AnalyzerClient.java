@@ -58,6 +58,11 @@ public final class AnalyzerClient {
                         ctx.getSource().sendFeedback(Text.literal("[Fight Analyzer] Recording fights with anyone again."));
                         return 1;
                     })))
+                .then(ClientCommandManager.literal("demo4").executes(ctx -> {
+                    MinecraftClient mc = ctx.getSource().getClient();
+                    mc.send(() -> mc.setScreen(new dev.pvpmod.analyzer.gui.FightReportScreen(new AnalyzerHomeScreen(null), DemoFight.saveGroupDemo())));
+                    return 1;
+                }))
                 .then(ClientCommandManager.literal("demo").executes(ctx -> {
                     MinecraftClient mc = ctx.getSource().getClient();
                     mc.send(() -> mc.setScreen(new dev.pvpmod.analyzer.gui.FightReportScreen(new AnalyzerHomeScreen(null), DemoFight.saveDemo())));

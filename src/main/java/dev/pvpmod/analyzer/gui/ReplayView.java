@@ -9,6 +9,9 @@ import dev.pvpmod.analyzer.PState;
 import dev.pvpmod.glass.Col;
 import dev.pvpmod.glass.GFont;
 import dev.pvpmod.glass.Glass;
+
+import java.util.ArrayList;
+import java.util.List;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.entity.player.SkinTextures;
 
@@ -33,6 +36,20 @@ final class ReplayView extends Scene3D {
     }
 
     PState me(float ph) { return state(ph, true); }
+
+    /** Another fighter of a group fight at the playhead (null if not recorded then). */
+    PState extra(float ph, int k) {
+        int n = rec.frames.size();
+        if (n == 0) return null;
+        int i = Math.max(0, Math.min(n - 1, (int) Math.floor(ph)));
+        int j = Math.min(n - 1, i + 1);
+        List<PState> a = rec.frames.get(i).x, b = rec.frames.get(j).x;
+        if (a == null || a.size() <= k) return null;
+        PState pa = a.get(k), pb = b == null || b.size() <= k ? pa : b.get(k);
+        if (pa == null) return null;
+        if (pb == null || pb.has(PState.ABSENT)) return pa;
+        return PState.lerp(pa, pb, Math.max(0, Math.min(1, ph - i)));
+    }
 
     PState op(float ph) { return state(ph, false); }
 
@@ -175,9 +192,24 @@ final class ReplayView extends Scene3D {
         // players: skinned models, then hitbox, look ray and name tag on top
         modelFaces(me, mySkin(), ph, true);
         if (mode != EYES) modelFaces(op, Ui.skin(rec.opUuid, rec.opName, rec.opTex, rec.opSig), ph, false);
+        // the other fighters in a group fight
+        List<PState> extras = new ArrayList<>();
+        for (int k = 0; k < rec.others.size(); k++) {
+            PState o = extra(ph, k);
+            extras.add(o);
+            if (o == null || o.has(PState.ABSENT)) continue;
+            FightRecord.Other ot = rec.others.get(k);
+            PState prev = extra(ph - 1, k);
+            double amt = prev == null ? 0 : clamp(Math.hypot(o.x - prev.x, o.z - prev.z) * 4.5, 0, 1);
+            player(o, Ui.skin(ot.uuid, ot.name, ot.tex, ot.sig), 0xE6FFFFFF, ph * 0.9, amt, -1);
+        }
         flush();
         drawPlayer(me, Col.CYAN, "You", mode != EYES);
         if (mode != EYES) drawPlayer(op, Col.RED, rec.opName, true);
+        for (int k = 0; k < extras.size(); k++) {
+            PState o = extras.get(k);
+            if (o != null && !o.has(PState.ABSENT)) drawPlayer(o, Col.PURPLE, rec.others.get(k).name, true);
+        }
 
         if (mode == EYES) {
             float cxs = x + w / 2, cys = y + h / 2;

@@ -13,6 +13,10 @@ public class FightRecord {
     /** Signed "textures" profile properties, so skins still load after the players log off. */
     public String opTex = "", opSig = "", meTex = "", meSig = "";
     public String server = "";
+    /** Fights recorded at the same time (2v2, FFA, getting teamed) share a group id. */
+    public String groupId = "";
+    /** The other fighters in the group, whose positions are stored per frame in {@link Frame#x}. */
+    public List<Other> others = new ArrayList<>();
     public String dim = "";
     public long start;
     public int preroll;            // ticks recorded before the first hit
@@ -31,6 +35,7 @@ public class FightRecord {
         m.opTex = opTex;
         m.opSig = opSig;
         m.server = server;
+        m.groupId = groupId;
         m.start = start;
         m.ticks = ticks();
         m.result = result;
@@ -50,9 +55,20 @@ public class FightRecord {
         return m;
     }
 
+    /** Another fighter in a group fight. */
+    public static class Other {
+        public String uuid = "", name = "", tex = "", sig = "";
+
+        public Other() {}
+
+        public Other(String uuid, String name, String tex, String sig) {
+            this.uuid = uuid; this.name = name; this.tex = tex; this.sig = sig;
+        }
+    }
+
     /** Small summary stored next to each fight, so the list opens instantly. */
     public static class FightMeta {
-        public String id, opName, opUuid, server, result, opTex = "", opSig = "";
+        public String id, opName, opUuid, server, result, opTex = "", opSig = "", groupId = "";
         public long start;
         public int ticks, flags, hitsGiven, hitsTaken;
         public float score;
