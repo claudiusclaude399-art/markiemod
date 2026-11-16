@@ -21,7 +21,7 @@ public final class GlassTex {
 
     private static final Map<Integer, Identifier> DISCS = new HashMap<>();
     private static final Map<Integer, Identifier> RINGS = new HashMap<>();
-    private static Identifier dot, glow, shadow, line;
+    private static Identifier dot, glow, shadow, line, white;
     private static int counter = 0;
 
     /** Texture with a configurable sampler, so scaled textures (dots, glows, lines) stay smooth. */
@@ -78,6 +78,16 @@ public final class GlassTex {
                     img.setColorArgb(x, y, white(discCoverage(x, y, rr, rr, rr, rr - 1.1f)));
             return register("ring" + rr, img, false);
         });
+    }
+
+    /** Plain white 4x4, tinted for solid 3D faces. */
+    public static Identifier white() {
+        if (white == null) {
+            NativeImage img = new NativeImage(4, 4, true);
+            for (int y = 0; y < 4; y++) for (int x = 0; x < 4; x++) img.setColorArgb(x, y, 0xFFFFFFFF);
+            white = register("white", img, false);
+        }
+        return white;
     }
 
     public static Identifier dot() {

@@ -46,6 +46,9 @@ public class FightReportScreen extends GlassScreen {
     private final Spring counterScroll = new Spring(0f, 200f, 26f);
     private float counterContentH = 0;
     private long copiedAt = 0;
+    private CounterLab lab;
+    private boolean dragLab = false;
+    private float labX, labY, labW, labH;
 
     // drag state
     private boolean dragView = false, dragTimeline = false;
@@ -82,6 +85,7 @@ public class FightReportScreen extends GlassScreen {
     // ------------------------------------------------------------------ input
     @Override
     protected void onMousePress(float x, float y, int button) {
+        dragLab = tab == 4 && lab != null && x >= labX && y >= labY && x < labX + labW && y < labY + labH;
         if (tab == 2 && ready()) {
             dragView = x >= viewX && y >= viewY && x < viewX + viewW && y < viewY + viewH;
             dragTimeline = x >= tlX - 6 && x < tlX + tlW + 6 && Math.abs(y - tlY) < 9 && !dragView;
@@ -90,12 +94,17 @@ public class FightReportScreen extends GlassScreen {
 
     @Override
     protected void onMouseRelease(float x, float y) {
+        dragLab = false;
         dragView = false;
         dragTimeline = false;
     }
 
     @Override
     protected void onDrag(float x, float y, float dx, float dy) {
+        if (dragLab && lab != null) {
+            lab.yaw += dx * 0.6f;
+            lab.pitch = Math.max(5f, Math.min(80f, lab.pitch + dy * 0.6f));
+        }
         if (dragView && view != null && view.mode != ReplayView.EYES) {
             view.yaw += dx * 0.6f;
             view.pitch = Math.max(-5f, Math.min(89f, view.pitch + dy * 0.6f));
@@ -544,27 +553,54 @@ public class FightReportScreen extends GlassScreen {
         }
 
         float top = y + 44, bottom = y + h - 8;
+        List<CheckType> found = new ArrayList<>();
+        for (CheckType c : CheckType.values()) if (an.flagCount(c) > 0) found.add(c);
+        found.sort((a, b) -> Float.compare(an.checkScore(b) * b.weight, an.checkScore(a) * a.weight));
+        if (lab == null) {
+            lab = new CounterLab(rec, an);
+            lab.setLesson(found.isEmpty() ? null : found.get(0));
+        }
+
+        // the 3D lab
+        boolean side = w >= 520;
+        labX = x + pad;
+        labY = top;
+        labW = side ? (w - pad * 2) * 0.56f : w - pad * 2;
+        labH = side ? bottom - top : (bottom - top) * 0.52f;
+        Glass.round(labX, labY, labW, labH, 16, Col.a(0x05060A, 0.6f), Col.a(0x0B0D14, 0.7f));
+        if (hover(labX, labY, labW, labH)) {
+            float sc = takeScroll();
+            if (sc != 0) lab.zoom = Math.max(0.5f, Math.min(1.8f, lab.zoom * (float) Math.pow(0.9, sc)));
+        }
+        lab.dragging = dragLab;
+        lab.draw(labX, labY, labW, labH, dt);
+        Glass.rim(labX, labY, labW, labH, 16, Col.a(0xFFFFFF, 0.28f), Col.a(0xFFFFFF, 0.06f));
+        String lt = lab.lesson == null ? "Your spacing" : lab.lesson.title;
+        int lc = lab.lesson == null ? Col.CYAN : lab.lesson.color;
+        float chipW = chip("3D COUNTER LAB", labX + 10, labY + 10, Col.CYAN);
+        GFont.draw(lt, labX + 16 + chipW, labY + 11, 9, Col.a(lc, 1f), true);
+        GFont.drawRight("drag to rotate \u2022 scroll to zoom", labX + labW - 10, labY + labH - 13, 6.5f, Col.LABEL3, false);
+
+        float listX = side ? labX + labW + 10 : x + pad, listW = side ? x + w - pad - listX : w - pad * 2;
+        if (!side) top = labY + labH + 8;
         float maxScroll = Math.max(0, counterContentH - (bottom - top));
-        if (hover(x, top, w, bottom - top)) {
+        if (hover(listX, top, listW, bottom - top)) {
             float sc = takeScroll();
             if (sc != 0) counterScroll.to(Math.max(0, Math.min(maxScroll, counterScroll.target() - sc * 40)));
         }
         counterScroll.to(Math.max(0, Math.min(maxScroll, counterScroll.target()))).update(dt);
 
-        List<CheckType> found = new ArrayList<>();
-        for (CheckType c : CheckType.values()) if (an.flagCount(c) > 0) found.add(c);
-        found.sort((a, b) -> Float.compare(an.checkScore(b) * b.weight, an.checkScore(a) * a.weight));
-
-        Glass.ctx().enableScissor((int) x, (int) top, (int) (x + w), (int) bottom);
+        Glass.ctx().enableScissor((int) listX - 2, (int) top, (int) (listX + listW) + 2, (int) bottom);
         float cy = top - counterScroll.get();
-        float cw = w - pad * 2, inner = cw - 28;
+        float cw = listW, inner = cw - 28;
+        float cardX = listX;
         if (found.isEmpty()) {
             String msg = "Nothing in this fight looked like cheating, so this one comes down to skill. Your fight breakdown is below.";
             float ch = 32 + paraHeight(msg, inner, 7.5f, false);
-            Glass.round(x + pad, cy, cw, ch, 12, Col.a(Col.GREEN, 0.14f), Col.a(Col.GREEN, 0.05f));
-            Glass.rim(x + pad, cy, cw, ch, 12, Col.a(Col.GREEN, 0.5f), Col.a(Col.GREEN, 0.15f));
-            GFont.draw("Nothing to counter", x + pad + 14, cy + 9, 10, Col.LABEL, true);
-            para(msg, x + pad + 14, cy + 25, inner, 7.5f, Col.LABEL2, false);
+            Glass.round(cardX, cy, cw, ch, 12, Col.a(Col.GREEN, 0.14f), Col.a(Col.GREEN, 0.05f));
+            Glass.rim(cardX, cy, cw, ch, 12, Col.a(Col.GREEN, 0.5f), Col.a(Col.GREEN, 0.15f));
+            GFont.draw("Nothing to counter", cardX + 14, cy + 9, 10, Col.LABEL, true);
+            para(msg, cardX + 14, cy + 25, inner, 7.5f, Col.LABEL2, false);
             cy += ch + 10;
         }
         for (CheckType c : found) {
@@ -574,12 +610,16 @@ public class FightReportScreen extends GlassScreen {
             for (String t : tips) ch += paraHeight(t, inner - 14, 7.5f, false) + 5;
             ch += 6;
             if (cy + ch > top - 4 && cy < bottom + 4) {
-                Glass.round(x + pad, cy, cw, ch, 14, Col.a(c.color, 0.12f), Col.a(c.color, 0.04f));
-                Glass.rim(x + pad, cy, cw, ch, 14, Col.a(c.color, 0.55f), Col.a(c.color, 0.12f));
-                float tx = x + pad + 14, ty = cy + 10;
+                boolean sel = lab.lesson == c;
+                boolean hov = hover(cardX, Math.max(cy, top), cw, Math.min(ch, bottom - cy));
+                Glass.round(cardX, cy, cw, ch, 14, Col.a(c.color, sel ? 0.22f : hov ? 0.16f : 0.10f), Col.a(c.color, sel ? 0.08f : 0.03f));
+                Glass.rim(cardX, cy, cw, ch, 14, Col.a(c.color, sel ? 1f : 0.5f), Col.a(c.color, sel ? 0.35f : 0.12f));
+                if (sel) GFont.draw("\u25B6 in 3D", cardX + 20 + GFont.width(c.title, 7, true) + 10, cy + 12, 6.5f, Col.a(c.color, 1f), true);
+                if (my >= top && my < bottom && clicked(cardX, cy, cw, ch)) lab.setLesson(c);
+                float tx = cardX + 14, ty = cy + 10;
                 chip(c.title, tx, ty, c.color);
                 GFont.drawRight(an.flagCount(c) + (an.flagCount(c) == 1 ? " flag" : " flags") + "  \u2022  " + Math.round(an.checkScore(c)) + "%",
-                    x + pad + cw - 14, ty + 2, 7, Col.LABEL2, true);
+                    cardX + cw - 14, ty + 2, 7, Col.LABEL2, true);
                 ty += 20;
                 ty += para(mine, tx, ty, inner, 8, Col.LABEL, true) + 4;
                 GFont.draw("HOW TO BEAT IT", tx, ty, 6.5f, Col.LABEL3, true);
@@ -597,18 +637,19 @@ public class FightReportScreen extends GlassScreen {
         float gh = 30;
         for (String g : gen) gh += paraHeight(g, inner, 7.5f, false) + 4;
         if (cy + gh > top - 4 && cy < bottom + 4) {
-            Glass.round(x + pad, cy, cw, gh, 14, Col.a(0xFFFFFF, 0.07f), Col.a(0xFFFFFF, 0.03f));
-            Glass.rim(x + pad, cy, cw, gh, 14, Col.a(0xFFFFFF, 0.25f), Col.a(0xFFFFFF, 0.05f));
-            GFont.draw("Your fight", x + pad + 14, cy + 10, 10, Col.LABEL, true);
+            if (my >= top && my < bottom && clicked(cardX, cy, cw, gh)) lab.setLesson(null);
+            Glass.round(cardX, cy, cw, gh, 14, Col.a(0xFFFFFF, lab.lesson == null ? 0.12f : 0.07f), Col.a(0xFFFFFF, 0.03f));
+            Glass.rim(cardX, cy, cw, gh, 14, Col.a(0xFFFFFF, 0.25f), Col.a(0xFFFFFF, 0.05f));
+            GFont.draw("Your fight", cardX + 14, cy + 10, 10, Col.LABEL, true);
             float ty = cy + 26;
-            for (String g : gen) ty += para(g, x + pad + 14, ty, inner, 7.5f, Col.LABEL2, false) + 4;
+            for (String g : gen) ty += para(g, cardX + 14, ty, inner, 7.5f, Col.LABEL2, false) + 4;
         }
         cy += gh + 8;
         counterContentH = cy + counterScroll.get() - top;
         Glass.ctx().disableScissor();
         if (maxScroll > 0) {
             float trackH = bottom - top, thumb = Math.max(20, trackH * trackH / counterContentH);
-            Glass.round(x + w - 6, top + (trackH - thumb) * (counterScroll.get() / maxScroll), 3, thumb, 1.5f, Col.a(0xFFFFFF, 0.3f));
+            Glass.round(listX + listW + 3, top + (trackH - thumb) * (counterScroll.get() / maxScroll), 3, thumb, 1.5f, Col.a(0xFFFFFF, 0.3f));
         }
     }
 

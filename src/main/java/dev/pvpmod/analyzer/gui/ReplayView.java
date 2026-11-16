@@ -10,21 +10,14 @@ import dev.pvpmod.glass.Col;
 import dev.pvpmod.glass.GFont;
 import dev.pvpmod.glass.Glass;
 import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gl.RenderPipelines;
-import net.minecraft.entity.player.PlayerSkinType;
 import net.minecraft.entity.player.SkinTextures;
-import net.minecraft.util.Identifier;
-import org.joml.Matrix3x2f;
-import org.joml.Matrix3x2fStack;
 
-import java.util.ArrayList;
-import java.util.List;
 
 /**
  * A small software 3D renderer for the replay: projects the recorded players, their hitboxes, look rays, trails,
  * hits and flag pins onto the GUI with an orbit camera, a top camera, or the opponent's own eyes.
  */
-final class ReplayView {
+final class ReplayView extends Scene3D {
     static final int ORBIT = 0, EYES = 1, TOP = 2;
 
     final FightRecord rec;
@@ -33,9 +26,6 @@ final class ReplayView {
     float yaw = 35f, pitch = 22f, dist = 6.5f;
     double tx = Double.NaN, ty, tz;     // smoothed orbit target
 
-    // camera basis
-    private double cx, cy, cz, fx, fy, fz, rx, ry, rz, ux, uy, uz, focal;
-    private float vx, vy, vw, vh;
 
     ReplayView(FightRecord rec, Analyzer an) {
         this.rec = rec;
@@ -59,73 +49,24 @@ final class ReplayView {
 
     // ------------------------------------------------------------------ camera
     private void setup(float ph, float x, float y, float w, float h, float dt) {
-        vx = x; vy = y; vw = w; vh = h;
         PState me = me(ph), op = op(ph);
         double mx = (me.x + op.x) / 2, my = (Math.min(me.y, op.y)) + 0.9, mz = (me.z + op.z) / 2;
         if (Double.isNaN(tx) || Math.abs(tx - mx) > 30 || Math.abs(tz - mz) > 30) { tx = mx; ty = my; tz = mz; }
         double k = 1 - Math.exp(-dt * 6);
         tx += (mx - tx) * k; ty += (my - ty) * k; tz += (mz - tz) * k;
 
-        double yawR, pitchR;
         if (mode == EYES) {
-            cx = op.x; cy = op.eyeY(); cz = op.z;
-            yawR = Math.toRadians(op.yw);
-            pitchR = Math.toRadians(op.pt);
+            setCamera(op.x, op.eyeY(), op.z, op.yw, op.pt, 70, x, y, w, h);
         } else {
             float p = mode == TOP ? 89.5f : pitch;
             float d = mode == TOP ? Math.max(dist, 10) * 1.4f : dist;
-            yawR = Math.toRadians(yaw);
-            pitchR = Math.toRadians(p);
-            double[] f = Analyzer.look((float) Math.toDegrees(yawR), (float) Math.toDegrees(pitchR));
-            cx = tx - f[0] * d; cy = ty - f[1] * d; cz = tz - f[2] * d;
+            orbit(tx, ty, tz, yaw, p, d, 60, x, y, w, h);
         }
-        double[] f = Analyzer.look((float) Math.toDegrees(yawR), (float) Math.toDegrees(pitchR));
-        fx = f[0]; fy = f[1]; fz = f[2];
-        // right = forward x up, up' = right x forward
-        rx = -fz; ry = 0; rz = fx;
-        double rl = Math.sqrt(rx * rx + rz * rz);
-        if (rl < 1e-6) { rx = 1; rz = 0; rl = 1; }
-        rx /= rl; rz /= rl;
-        ux = ry * fz - rz * fy; uy = rz * fx - rx * fz; uz = rx * fy - ry * fx;
-        double fov = Math.toRadians(mode == EYES ? 70 : 60);
-        focal = (vh / 2.0) / Math.tan(fov / 2);
-    }
-
-    /** Camera-space coordinates {x, y, depth}. */
-    private double[] cam(double x, double y, double z) {
-        double dx = x - cx, dy = y - cy, dz = z - cz;
-        return new double[]{dx * rx + dy * ry + dz * rz, dx * ux + dy * uy + dz * uz, dx * fx + dy * fy + dz * fz};
-    }
-
-    private float[] screen(double[] c) {
-        return new float[]{(float) (vx + vw / 2 + focal * c[0] / c[2]), (float) (vy + vh / 2 - focal * c[1] / c[2])};
-    }
-
-    /** Projected point or null when behind the camera. */
-    float[] project(double x, double y, double z) {
-        double[] c = cam(x, y, z);
-        return c[2] < 0.1 ? null : screen(c);
-    }
-
-    private void line3(double x1, double y1, double z1, double x2, double y2, double z2, float width, int color) {
-        double[] a = cam(x1, y1, z1), b = cam(x2, y2, z2);
-        double near = 0.1;
-        if (a[2] < near && b[2] < near) return;
-        if (a[2] < near || b[2] < near) {
-            double t = (near - a[2]) / (b[2] - a[2]);
-            double[] p = {a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, near};
-            if (a[2] < near) a = p; else b = p;
-        }
-        float[] sa = screen(a), sb = screen(b);
-        if (Math.abs(sa[0]) > 1e5 || Math.abs(sb[0]) > 1e5) return;
-        Glass.line(sa[0], sa[1], sb[0], sb[1], width, color);
     }
 
     private void box(PState p, int color, float width) {
-        double hw = p.w / 2, x0 = p.x - hw, x1 = p.x + hw, y0 = p.y, y1 = p.y + p.h, z0 = p.z - hw, z1 = p.z + hw;
-        double[][] c = {{x0, y0, z0}, {x1, y0, z0}, {x1, y0, z1}, {x0, y0, z1}, {x0, y1, z0}, {x1, y1, z0}, {x1, y1, z1}, {x0, y1, z1}};
-        int[][] e = {{0, 1}, {1, 2}, {2, 3}, {3, 0}, {4, 5}, {5, 6}, {6, 7}, {7, 4}, {0, 4}, {1, 5}, {2, 6}, {3, 7}};
-        for (int[] ed : e) line3(c[ed[0]][0], c[ed[0]][1], c[ed[0]][2], c[ed[1]][0], c[ed[1]][1], c[ed[1]][2], width, color);
+        double hw = p.w / 2;
+        wireBox(p.x - hw, p.y, p.z - hw, p.x + hw, p.y + p.h, p.z + hw, width, color);
     }
 
     // ------------------------------------------------------------------ drawing
@@ -232,11 +173,9 @@ final class ReplayView {
         }
 
         // players: skinned models, then hitbox, look ray and name tag on top
-        List<Face> faces = new ArrayList<>();
-        modelFaces(faces, me, mySkin(), ph, true);
-        if (mode != EYES) modelFaces(faces, op, Ui.skin(rec.opUuid, rec.opName, rec.opTex, rec.opSig), ph, false);
-        faces.sort((a, b) -> Double.compare(b.depth, a.depth));
-        for (Face f : faces) drawFace(f);
+        modelFaces(me, mySkin(), ph, true);
+        if (mode != EYES) modelFaces(op, Ui.skin(rec.opUuid, rec.opName, rec.opTex, rec.opSig), ph, false);
+        flush();
         drawPlayer(me, Col.CYAN, "You", mode != EYES);
         if (mode != EYES) drawPlayer(op, Col.RED, rec.opName, true);
 
@@ -276,8 +215,6 @@ final class ReplayView {
     private static double clamp(double v, double lo, double hi) { return Math.max(lo, Math.min(hi, v)); }
 
     // ------------------------------------------------------------------ skinned player models
-    private record Face(float[] s0, float[] s1, float[] s3, double depth, Identifier tex, int u, int v, int w, int h, int color) {}
-
     private double[] meDist, opDist;
 
     private SkinTextures mySkin() {
@@ -321,87 +258,13 @@ final class ReplayView {
         return -1;
     }
 
-    private void modelFaces(List<Face> out, PState p, SkinTextures skin, float ph, boolean mine) {
+    private void modelFaces(PState p, SkinTextures skin, float ph, boolean mine) {
         if (p == null || rec.frames.isEmpty()) return;
-        Identifier tex = skin.body().texturePath();
-        boolean slim = skin.model() == PlayerSkinType.SLIM;
         double[] d = dist(mine);
         double phase = distAt(d, ph) * 2.66;
-        double speed = distAt(d, ph) - distAt(d, ph - 1);
-        double amt = clamp(speed * 4.5, 0, 1);
-        double leg = Math.cos(phase) * 1.4 * amt * 0.6;
-        double arm = Math.cos(phase + Math.PI) * amt * 0.8;
-        float sw = swing(ph, mine);
-        double attack = sw >= 0 ? -Math.sin(sw * Math.PI) * 1.5 - 0.25 : 0;
-        double headPitch = Math.toRadians(clamp(p.pt, -90, 90));
-        float alpha = (p.has(PState.ABSENT) ? 0.3f : 1f) * Glass.alpha;
-        int aw = slim ? 3 : 4;
-
-        //            x0     y0    z0    x1      y1    z1   texU texV  uw  uh  ud  pivotY pivotX rot
-        part(out, p, tex, alpha, -4, 24, -4, 4, 32, 4, 0, 0, 8, 8, 8, 0, 24, headPitch);
-        part(out, p, tex, alpha, -4.5, 23.5, -4.5, 4.5, 32.5, 4.5, 32, 0, 8, 8, 8, 0, 24, headPitch);
-        part(out, p, tex, alpha, -4, 12, -2, 4, 24, 2, 16, 16, 8, 12, 4, 0, 12, 0);
-        part(out, p, tex, alpha, -4 - aw, 12, -2, -4, 24, 2, 40, 16, aw, 12, 4, -5, 22, arm + attack);
-        part(out, p, tex, alpha, 4, 12, -2, 4 + aw, 24, 2, 32, 48, aw, 12, 4, 5, 22, -arm);
-        part(out, p, tex, alpha, -4, 0, -2, 0, 12, 2, 0, 16, 4, 12, 4, -2, 12, leg);
-        part(out, p, tex, alpha, 0, 0, -2, 4, 12, 2, 16, 48, 4, 12, 4, 2, 12, -leg);
+        double amt = clamp((distAt(d, ph) - distAt(d, ph - 1)) * 4.5, 0, 1);
+        int a = Math.round((p.has(PState.ABSENT) ? 0.3f : 1f) * 255);
+        player(p, skin, (a << 24) | 0xFFFFFF, phase, amt, swing(ph, mine));
     }
 
-    /** One box of the player model (Minecraft skin layout), as up to 6 textured faces facing the camera. */
-    private void part(List<Face> out, PState p, Identifier tex, float alpha,
-                      double x0, double y0, double z0, double x1, double y1, double z1,
-                      int tu, int tv, int w, int h, int dd, double pivX, double pivY, double rot) {
-        double[][][] faces = {
-            // {p0 (image top-left), p1 (top-right), p3 (bottom-left), normal}
-            {{x0, y1, z1}, {x1, y1, z1}, {x0, y0, z1}, {0, 0, 1}},
-            {{x1, y1, z0}, {x0, y1, z0}, {x1, y0, z0}, {0, 0, -1}},
-            {{x0, y1, z0}, {x0, y1, z1}, {x0, y0, z0}, {-1, 0, 0}},
-            {{x1, y1, z1}, {x1, y1, z0}, {x1, y0, z1}, {1, 0, 0}},
-            {{x0, y1, z0}, {x1, y1, z0}, {x0, y1, z1}, {0, 1, 0}},
-            {{x0, y0, z1}, {x1, y0, z1}, {x0, y0, z0}, {0, -1, 0}}
-        };
-        int[][] uv = {
-            {tu + dd, tv + dd, w, h}, {tu + 2 * dd + w, tv + dd, w, h}, {tu, tv + dd, dd, h},
-            {tu + dd + w, tv + dd, dd, h}, {tu + dd, tv, w, dd}, {tu + dd + w, tv, w, dd}
-        };
-        float[] shade = {0.85f, 0.85f, 0.68f, 0.68f, 1f, 0.5f};
-        double k = 1.8 / 32.0, yaw = Math.toRadians(p.yw), drop = p.has(PState.SNEAK) ? 0.15 : 0;
-        double cr = Math.cos(rot), sr = Math.sin(rot), cyw = Math.cos(yaw), syw = Math.sin(yaw);
-        for (int f = 0; f < 6; f++) {
-            double[][] q = new double[4][3];
-            double[][] src = {faces[f][0], faces[f][1], faces[f][2],
-                {faces[f][1][0] + faces[f][2][0] - faces[f][0][0], faces[f][1][1] + faces[f][2][1] - faces[f][0][1], faces[f][1][2] + faces[f][2][2] - faces[f][0][2]}};
-            for (int c = 0; c < 4; c++) {
-                double mx = src[c][0] - pivX, my = src[c][1] - pivY, mz = src[c][2];
-                double ry = my * cr - mz * sr, rz = my * sr + mz * cr;          // pitch about the pivot
-                double wx = (mx + pivX) * k, wy = (ry + pivY) * k, wz = rz * k;
-                q[c][0] = p.x + wx * cyw - wz * syw;                              // body yaw
-                q[c][1] = p.y - drop + wy;
-                q[c][2] = p.z + wx * syw + wz * cyw;
-            }
-            double[] n = faces[f][3];
-            double ny = n[1] * cr - n[2] * sr, nz = n[1] * sr + n[2] * cr, nx = n[0];
-            double wnx = nx * cyw - nz * syw, wnz = nx * syw + nz * cyw;
-            double fcx = (q[0][0] + q[3][0]) / 2, fcy = (q[0][1] + q[3][1]) / 2, fcz = (q[0][2] + q[3][2]) / 2;
-            if (wnx * (fcx - cx) + ny * (fcy - cy) + wnz * (fcz - cz) >= 0) continue;   // back face
-            double[] c0 = cam(q[0][0], q[0][1], q[0][2]), c1 = cam(q[1][0], q[1][1], q[1][2]),
-                c2 = cam(q[2][0], q[2][1], q[2][2]), c3 = cam(q[3][0], q[3][1], q[3][2]);
-            if (c0[2] < 0.1 || c1[2] < 0.1 || c2[2] < 0.1 || c3[2] < 0.1) continue;
-            int sh = Math.round(255 * shade[f]);
-            int color = (Math.round(alpha * 255) << 24) | (sh << 16) | (sh << 8) | sh;
-            out.add(new Face(screen(c0), screen(c1), screen(c2), cam(fcx, fcy, fcz)[2], tex, uv[f][0], uv[f][1], uv[f][2], uv[f][3], color));
-        }
-    }
-
-    /** Draws a face as an affine-mapped textured quad. */
-    private void drawFace(Face f) {
-        Matrix3x2fStack m = Glass.ctx().getMatrices();
-        m.pushMatrix();
-        m.mul(new Matrix3x2f(
-            (f.s1[0] - f.s0[0]) / f.w, (f.s1[1] - f.s0[1]) / f.w,
-            (f.s3[0] - f.s0[0]) / f.h, (f.s3[1] - f.s0[1]) / f.h,
-            f.s0[0], f.s0[1]));
-        Glass.ctx().drawTexture(RenderPipelines.GUI_TEXTURED, f.tex, 0, 0, f.u, f.v, f.w, f.h, f.w, f.h, 64, 64, f.color);
-        m.popMatrix();
-    }
 }
