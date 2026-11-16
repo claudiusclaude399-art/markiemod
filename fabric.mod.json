@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
-  "id": "pvpmod",
+  "id": "markiesdetector",
   "version": "${version}",
-  "name": "PvP Mod",
-  "description": "Client-side PvP visuals plus a 1v1 fight analyzer: records your fights and flags reach, killaura, aim assist, autoclicker, anti-knockback, speed, flight, auto totem and crystal aura.",
+  "name": "Markie's Detector",
+  "description": "Markie's Detector: records your fights (up to 4 opponents) and finds cheats - reach, killaura, aim assist, autoclicker, anti-knockback, speed, flight, auto totem, crystal aura, criticals, no slowdown, fast eat, hitboxes, step, water walk, blink - with a 3D replay, graphs and a counter coach. Also includes PvP visuals: item sizes, totem pop, end crystal style, particle control.",
   "authors": [
     "you"
   ],

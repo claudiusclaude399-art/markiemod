@@ -26,7 +26,7 @@ public class AnalyzerHomeScreen extends GlassScreen {
     private String confirmDelete = null;
 
     public AnalyzerHomeScreen(Screen parent) {
-        super("Fight Analyzer", parent);
+        super("Markie's Detector", parent);
     }
 
     @Override
@@ -54,7 +54,7 @@ public class AnalyzerHomeScreen extends GlassScreen {
         Glass.panel(x0, y0, pw, ph, 22);
 
         // header
-        GFont.draw("Fight Analyzer", x0 + 18, y0 + 15, 17, Col.LABEL, true);
+        GFont.draw("Markie's Detector", x0 + 18, y0 + 15, 17, Col.LABEL, true);
         GFont.draw("Records your fights (up to 4 opponents at once) and shows exactly where they cheat", x0 + 18, y0 + 36, 7.5f, Col.LABEL2, false);
         boolean blocked = settings;
         if (button("done", "Done", x0 + pw - 68, y0 + 14, 52, 20, Col.BLUE, 0.55f) && !blocked) close();

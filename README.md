@@ -1,4 +1,6 @@
-# PvP Mod (Fabric, Minecraft 1.21.11)
+# Markie's Detector (Fabric, Minecraft 1.21.11)
+
+A cheat detector for your fights plus PvP visual tweaks. Jar: `markiesdetector-1.0.0.jar`.
 
 Client-side only. Open settings with /pvpmod in chat. Config: config/pvpmod.json
 
@@ -10,11 +12,11 @@ Client-side only. Open settings with /pvpmod in chat. Config: config/pvpmod.json
 - Totem pop: hide the on-screen totem, hide/resize/thin out/recolour the particles.
 - Particles: master switch, global size and amount, plus show/hide, size and amount per particle type.
 
-Build: push to GitHub; the Actions tab builds the jar (artifact "pvpmod-jar", use the one without -sources).
+Build: push to GitHub; the Actions tab builds the jar (artifact "markiesdetector-jar", use the one without -sources).
 The colour tints live in their own mixin config (pvpmod.tint.mixins.json). If one fails to apply,
 the rest of the mod still loads.
 
-## Fight Analyzer (1v1 anti-cheat)
+## Cheat detector
 
 ![Overview](docs/overview.jpg)
 ![Replay](docs/replay.jpg)
@@ -25,7 +27,7 @@ the rest of the mod still loads.
 ![Counter Lab](docs/counter-lab.jpg)
 ![Counter](docs/counter.jpg)
 
-Press **J** (or `/pvpmod fights`, or the "Fight Analyzer" button in `/pvpmod`) to open it.
+Press **J** (or `/markiesdetector`, or the "Cheat detector & fight replays" button in `/pvpmod`) to open it.
 Every fight is recorded automatically, against up to **4 opponents at once** (2v2s, FFAs, getting teamed): the recording starts the first time you hit a player or a player hits
 you, and stops when someone dies, they leave, or nobody hits for 20 seconds (changeable in Settings).
 While recording, a "dynamic island" at the top of the screen shows each opponent (one row per player) with their
@@ -35,7 +37,7 @@ Group fights: every opponent gets their own recording and cheat analysis, judged
 (hits from teammates or other players count as knockback/explosions, not as yours). Fights that overlap are saved
 as one group: the list shows a single card with everyone's heads and scores, the report has a row of opponent
 pills to switch between them, and the replay shows all the fighters at once (the one you're looking at in red,
-the others in purple). `/pvpmod demo4` or "Try a 4-player demo" shows a fight against three players at once.
+the others in purple). `/markiesdetector demo4` or "Try a 4-player demo" shows a fight against three players at once.
 
 Each fight gets a report with four tabs:
 
@@ -102,8 +104,8 @@ How it avoids false flags, especially with laggy opponents:
   flags to push the score up.
 - Each moment is judged one second late, so the analyzer can see what happened right after it (knockback, totem refills).
 
-`/pvpmod demo` creates a simulated fight against a cheater so you can try the screens without a real fight.
-`/pvpmod analyze <name>` only records fights with that player (`/pvpmod analyze off` to undo), `/pvpmod stop` ends
+`/markiesdetector demo` creates a simulated fight against a cheater so you can try the screens without a real fight.
+`/markiesdetector analyze <name>` only records fights with that player (`/markiesdetector analyze off` to undo), `/markiesdetector stop` ends
 the current recording.
 
 Fights are saved in `.minecraft/pvpmod/fights` (gzip JSON, the newest 50 are kept). The score is evidence, not proof:

@@ -424,11 +424,11 @@ public final class FightTracker {
         if (mc.player != null && PvpConfig.get().analyzerChat) {
             int sc = Math.round(meta.score);
             Formatting col = sc < 20 ? Formatting.GREEN : sc < 45 ? Formatting.YELLOW : sc < 75 ? Formatting.GOLD : Formatting.RED;
-            mc.player.sendMessage(Text.literal("[Fight Analyzer] ").formatted(Formatting.AQUA)
+            mc.player.sendMessage(Text.literal("[Markie's Detector] ").formatted(Formatting.AQUA)
                 .append(Text.literal("vs " + meta.opName + ": ").formatted(Formatting.WHITE))
                 .append(Text.literal(Analyzer.verdict(meta.score) + " (" + sc + "%)").formatted(col))
                 .append(Text.literal(meta.flags > 0 ? "  " + meta.flags + " flags" : "").formatted(Formatting.GRAY))
-                .append(Text.literal("  - /pvpmod fights to review").formatted(Formatting.DARK_GRAY)), false);
+                .append(Text.literal("  - press J to review").formatted(Formatting.DARK_GRAY)), false);
         }
     }
 

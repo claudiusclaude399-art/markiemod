@@ -40,8 +40,19 @@ public final class AnalyzerClient {
         ClientEntityEvents.ENTITY_UNLOAD.register((entity, world) -> FightTracker.onEntityUnload(entity));
         HudElementRegistry.addLast(Identifier.of("pvpmod", "analyzer_island"), (ctx, tick) -> AnalyzerHud.render(ctx));
 
-        ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) -> dispatcher.register(
-            ClientCommandManager.literal("pvpmod")
+        // /markiesdetector opens the detector; /pvpmod (the settings menu) gets the same sub-commands
+        ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) -> {
+            dispatcher.register(commands("markiesdetector").executes(ctx -> {
+                MinecraftClient mc = ctx.getSource().getClient();
+                mc.send(() -> mc.setScreen(new AnalyzerHomeScreen(null)));
+                return 1;
+            }));
+            dispatcher.register(commands("pvpmod"));
+        });
+    }
+
+    private static com.mojang.brigadier.builder.LiteralArgumentBuilder<net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource> commands(String root) {
+        return ClientCommandManager.literal(root)
                 .then(ClientCommandManager.literal("fights").executes(ctx -> {
                     MinecraftClient mc = ctx.getSource().getClient();
                     mc.send(() -> mc.setScreen(new AnalyzerHomeScreen(null)));
@@ -50,12 +61,12 @@ public final class AnalyzerClient {
                 .then(ClientCommandManager.literal("analyze")
                     .then(ClientCommandManager.argument("player", StringArgumentType.word()).executes(ctx -> {
                         FightTracker.forcedTarget = StringArgumentType.getString(ctx, "player");
-                        ctx.getSource().sendFeedback(Text.literal("[Fight Analyzer] Only fights with " + FightTracker.forcedTarget + " will be recorded. /pvpmod analyze off to undo."));
+                        ctx.getSource().sendFeedback(Text.literal("[Markie's Detector] Only fights with " + FightTracker.forcedTarget + " will be recorded. /markiesdetector analyze off to undo."));
                         return 1;
                     }))
                     .then(ClientCommandManager.literal("off").executes(ctx -> {
                         FightTracker.forcedTarget = null;
-                        ctx.getSource().sendFeedback(Text.literal("[Fight Analyzer] Recording fights with anyone again."));
+                        ctx.getSource().sendFeedback(Text.literal("[Markie's Detector] Recording fights with anyone again."));
                         return 1;
                     })))
                 .then(ClientCommandManager.literal("demo4").executes(ctx -> {
@@ -71,6 +82,6 @@ public final class AnalyzerClient {
                 .then(ClientCommandManager.literal("stop").executes(ctx -> {
                     FightTracker.end("END");
                     return 1;
-                }))));
+                }));
     }
 }

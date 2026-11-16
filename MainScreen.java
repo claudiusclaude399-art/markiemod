@@ -3,7 +3,7 @@ package dev.pvpmod.gui;
 import net.minecraft.client.gui.screen.Screen;
 
 public class MainScreen extends PvpScreen {
-    public MainScreen(Screen parent) { super("PvP Mod", parent); }
+    public MainScreen(Screen parent) { super("Markie's Detector", parent); }
 
     @Override
     protected void init() {
@@ -14,7 +14,7 @@ public class MainScreen extends PvpScreen {
         addDrawableChild(button(x, y + GAP * 2, 200, "End Crystal",                   () -> client.setScreen(new CrystalScreen(this))));
         addDrawableChild(button(x, y + GAP * 3, 200, "Totem Pop",                     () -> client.setScreen(new TotemScreen(this))));
         addDrawableChild(button(x, y + GAP * 4, 200, "Particles",                     () -> client.setScreen(new ParticlesScreen(this))));
-        addDrawableChild(button(x, y + GAP * 5, 200, "Fight Analyzer (anti-cheat)",   () -> client.setScreen(new dev.pvpmod.analyzer.gui.AnalyzerHomeScreen(this))));
+        addDrawableChild(button(x, y + GAP * 5, 200, "Cheat detector & fight replays", () -> client.setScreen(new dev.pvpmod.analyzer.gui.AnalyzerHomeScreen(this))));
         addDone();
     }
 }
