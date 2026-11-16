@@ -1,6 +1,6 @@
-package dev.pvpmod.mixin;
+package dev.markiesdetector.mixin;
 
-import dev.pvpmod.config.PvpConfig;
+import dev.markiesdetector.config.PvpConfig;
 import net.minecraft.client.particle.Particle;
 import net.minecraft.client.particle.ParticleManager;
 import net.minecraft.particle.ParticleEffect;
@@ -15,14 +15,14 @@ public abstract class ParticleManagerMixin {
         "addParticle(Lnet/minecraft/particle/ParticleEffect;DDDDDD)Lnet/minecraft/client/particle/Particle;";
 
     @Inject(method = ADD, at = @At("HEAD"), cancellable = true, require = 0)
-    private void pvpmod$filter(ParticleEffect effect, double x, double y, double z,
+    private void markiesdetector$filter(ParticleEffect effect, double x, double y, double z,
                                double vx, double vy, double vz,
                                CallbackInfoReturnable<Particle> cir) {
         if (!PvpConfig.get().shouldSpawn(effect)) cir.setReturnValue(null);
     }
 
     @Inject(method = ADD, at = @At("RETURN"), require = 0)
-    private void pvpmod$style(ParticleEffect effect, double x, double y, double z,
+    private void markiesdetector$style(ParticleEffect effect, double x, double y, double z,
                               double vx, double vy, double vz,
                               CallbackInfoReturnable<Particle> cir) {
         Particle p = cir.getReturnValue();

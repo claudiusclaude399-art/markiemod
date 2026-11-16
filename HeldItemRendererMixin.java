@@ -1,6 +1,6 @@
-package dev.pvpmod.mixin;
+package dev.markiesdetector.mixin;
 
-import dev.pvpmod.config.PvpConfig;
+import dev.markiesdetector.config.PvpConfig;
 import net.minecraft.client.render.command.OrderedRenderCommandQueue;
 import net.minecraft.client.render.item.HeldItemRenderer;
 import net.minecraft.client.util.math.MatrixStack;
@@ -20,7 +20,7 @@ public abstract class HeldItemRendererMixin {
         + "Lnet/minecraft/client/render/command/OrderedRenderCommandQueue;I)V";
 
     @Inject(method = RENDER_ITEM, at = @At("HEAD"))
-    private void pvpmod$pushScale(LivingEntity entity, ItemStack stack, ItemDisplayContext ctx,
+    private void markiesdetector$pushScale(LivingEntity entity, ItemStack stack, ItemDisplayContext ctx,
                                   MatrixStack matrices, OrderedRenderCommandQueue queue, int light,
                                   CallbackInfo ci) {
         matrices.push();
@@ -29,7 +29,7 @@ public abstract class HeldItemRendererMixin {
     }
 
     @Inject(method = RENDER_ITEM, at = @At("RETURN"))
-    private void pvpmod$popScale(LivingEntity entity, ItemStack stack, ItemDisplayContext ctx,
+    private void markiesdetector$popScale(LivingEntity entity, ItemStack stack, ItemDisplayContext ctx,
                                  MatrixStack matrices, OrderedRenderCommandQueue queue, int light,
                                  CallbackInfo ci) {
         matrices.pop();

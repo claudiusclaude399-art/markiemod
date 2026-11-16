@@ -1,7 +1,7 @@
-package dev.pvpmod.mixin;
+package dev.markiesdetector.mixin;
 
-import dev.pvpmod.PvpTint;
-import dev.pvpmod.config.PvpConfig;
+import dev.markiesdetector.PvpTint;
+import dev.markiesdetector.config.PvpConfig;
 import net.minecraft.client.render.command.OrderedRenderCommandQueue;
 import net.minecraft.client.render.item.HeldItemRenderer;
 import net.minecraft.client.util.math.MatrixStack;
@@ -22,14 +22,14 @@ public abstract class HeldItemTintMixin {
         + "Lnet/minecraft/client/render/command/OrderedRenderCommandQueue;I)V";
 
     @Inject(method = RENDER_ITEM, at = @At("HEAD"))
-    private void pvpmod$setTint(LivingEntity entity, ItemStack stack, ItemDisplayContext ctx,
+    private void markiesdetector$setTint(LivingEntity entity, ItemStack stack, ItemDisplayContext ctx,
                                 MatrixStack matrices, OrderedRenderCommandQueue queue, int light,
                                 CallbackInfo ci) {
         PvpTint.current = PvpConfig.get().colorFor(stack);
     }
 
     @Inject(method = RENDER_ITEM, at = @At("RETURN"))
-    private void pvpmod$clearTint(LivingEntity entity, ItemStack stack, ItemDisplayContext ctx,
+    private void markiesdetector$clearTint(LivingEntity entity, ItemStack stack, ItemDisplayContext ctx,
                                   MatrixStack matrices, OrderedRenderCommandQueue queue, int light,
                                   CallbackInfo ci) {
         PvpTint.current = PvpTint.NONE;

@@ -2,7 +2,7 @@
 
 A cheat detector for your fights plus PvP visual tweaks. Jar: `markiesdetector-1.0.0.jar`.
 
-Client-side only. Open settings with /pvpmod in chat. Config: config/pvpmod.json
+Client-side only. Open settings with `/markiesdetector settings` (or `/pvpmod`) in chat. Config: config/markiesdetector.json (settings from an older config/pvpmod.json are copied over on first launch).
 
 - Items: click any item for its own screen: colour picker, preview, size, and "Edit texture...".
 - Texture editor: pixel editor with animation frames. "Apply + reload" writes the resource pack
@@ -13,7 +13,7 @@ Client-side only. Open settings with /pvpmod in chat. Config: config/pvpmod.json
 - Particles: master switch, global size and amount, plus show/hide, size and amount per particle type.
 
 Build: push to GitHub; the Actions tab builds the jar (artifact "markiesdetector-jar", use the one without -sources).
-The colour tints live in their own mixin config (pvpmod.tint.mixins.json). If one fails to apply,
+The colour tints live in their own mixin config (markiesdetector.tint.mixins.json). If one fails to apply,
 the rest of the mod still loads.
 
 ## Cheat detector
@@ -108,9 +108,9 @@ How it avoids false flags, especially with laggy opponents:
 `/markiesdetector analyze <name>` only records fights with that player (`/markiesdetector analyze off` to undo), `/markiesdetector stop` ends
 the current recording.
 
-Fights are saved in `.minecraft/pvpmod/fights` (gzip JSON, the newest 50 are kept). The score is evidence, not proof:
+Fights are saved in `.minecraft/markiesdetector/fights` (gzip JSON, the newest 50 are kept). The score is evidence, not proof:
 lag spikes and server plugins (custom knockback, custom reach) can cause flags, so use Sensitivity in Settings
 (Strict / Normal / Relaxed) and watch the replay before reporting someone.
 
-The UI uses the Inter font (SIL Open Font License, see `src/main/resources/assets/pvpmod/font/inter_license.txt`).
-New code lives in `src/main/java/dev/pvpmod/analyzer` and `src/main/java/dev/pvpmod/glass` (the glass UI toolkit).
+The UI uses the Inter font (SIL Open Font License, see `src/main/resources/assets/markiesdetector/font/inter_license.txt`).
+New code lives in `src/main/java/dev/markiesdetector/analyzer` and `src/main/java/dev/markiesdetector/glass` (the glass UI toolkit).

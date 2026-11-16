@@ -1,4 +1,4 @@
-package dev.pvpmod.gui;
+package dev.markiesdetector.gui;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;

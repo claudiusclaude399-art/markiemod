@@ -1,4 +1,4 @@
-package dev.pvpmod.render;
+package dev.markiesdetector.render;
 
 import net.minecraft.client.render.VertexConsumer;
 

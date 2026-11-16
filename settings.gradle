@@ -5,4 +5,4 @@ pluginManagement {
         gradlePluginPortal()
     }
 }
-rootProject.name = 'pvpmod'
+rootProject.name = 'markiesdetector'

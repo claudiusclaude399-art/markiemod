@@ -1,4 +1,4 @@
-package dev.pvpmod.gui;
+package dev.markiesdetector.gui;
 
 public final class ColorUtil {
     public static final float[] HUES = {0f, 28f, 52f, 120f, 170f, 215f, 265f, 320f};

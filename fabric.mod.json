@@ -11,13 +11,13 @@
   "environment": "client",
   "entrypoints": {
     "client": [
-      "dev.pvpmod.PvpModClient"
+      "dev.markiesdetector.PvpModClient"
     ]
   },
   "mixins": [
-    "pvpmod.mixins.json",
-    "pvpmod.tint.mixins.json",
-    "pvpmod.analyzer.mixins.json"
+    "markiesdetector.mixins.json",
+    "markiesdetector.tint.mixins.json",
+    "markiesdetector.analyzer.mixins.json"
   ],
   "depends": {
     "fabricloader": ">=0.18.0",

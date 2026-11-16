@@ -1,7 +1,7 @@
-package dev.pvpmod.mixin;
+package dev.markiesdetector.mixin;
 
-import dev.pvpmod.PvpTint;
-import dev.pvpmod.render.TintingVertexConsumer;
+import dev.markiesdetector.PvpTint;
+import dev.markiesdetector.render.TintingVertexConsumer;
 import net.minecraft.client.render.RenderLayer;
 import net.minecraft.client.render.VertexConsumerProvider;
 import net.minecraft.client.render.item.ItemRenderState;
@@ -24,7 +24,7 @@ public abstract class ItemRendererMixin {
                    + "Lnet/minecraft/client/render/RenderLayer;"
                    + "Lnet/minecraft/client/render/item/ItemRenderState$Glint;)V",
             at = @At("HEAD"), cancellable = true, require = 0)
-    private static void pvpmod$tint(ItemDisplayContext displayContext, MatrixStack matrices,
+    private static void markiesdetector$tint(ItemDisplayContext displayContext, MatrixStack matrices,
                                     VertexConsumerProvider vertexConsumers, int light, int overlay,
                                     int[] tints, List<BakedQuad> quads, RenderLayer layer,
                                     ItemRenderState.Glint glint, CallbackInfo ci) {

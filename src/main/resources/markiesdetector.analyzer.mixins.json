@@ -1,0 +1,13 @@
+{
+  "required": false,
+  "minVersion": "0.8",
+  "package": "dev.markiesdetector.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "client": [
+    "ClientPlayNetworkHandlerMixin",
+    "DrawContextAccessor"
+  ],
+  "injectors": {
+    "defaultRequire": 0
+  }
+}

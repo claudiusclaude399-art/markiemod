@@ -1,0 +1,310 @@
+package dev.markiesdetector.analyzer.gui;
+
+import dev.markiesdetector.analyzer.Analyzer;
+import dev.markiesdetector.analyzer.CheckType;
+import dev.markiesdetector.analyzer.FightRecord.FightMeta;
+import dev.markiesdetector.analyzer.FightStore;
+import dev.markiesdetector.analyzer.FightTracker;
+import dev.markiesdetector.config.PvpConfig;
+import dev.markiesdetector.glass.Col;
+import dev.markiesdetector.glass.GFont;
+import dev.markiesdetector.glass.Glass;
+import dev.markiesdetector.glass.GlassScreen;
+import dev.markiesdetector.glass.Spring;
+import net.minecraft.client.gui.DrawContext;
+import net.minecraft.client.gui.screen.Screen;
+import net.minecraft.util.Util;
+
+import java.util.List;
+
+/** Home of the analyzer: live status and the list of recorded fights. */
+public class AnalyzerHomeScreen extends GlassScreen {
+    private List<FightMeta> fights;
+    private final Spring scroll = new Spring(0f, 200f, 26f);
+    private final Spring sheet = new Spring(0f, 190f, 22f);
+    private boolean settings = false;
+    private String confirmDelete = null;
+
+    public AnalyzerHomeScreen(Screen parent) {
+        super("Markie's Detector", parent);
+    }
+
+    @Override
+    protected void init() {
+        fights = FightStore.list();
+    }
+
+    @Override
+    protected boolean onKey(int key) {
+        if (key == 256 && settings) { settings = false; PvpConfig.save(); return true; }
+        return false;
+    }
+
+    @Override
+    protected void draw(DrawContext ctx) {
+        float W = this.width, H = this.height;
+        float pw = Math.min(580, W - 24), ph = H - 20;
+        float a = appear.get();
+        float x0 = (W - pw) / 2f, y0 = 10 + (1f - a) * 18f;
+        sheet.to(settings ? 1f : 0f).update(dt);
+        fights = FightStore.list();
+        modalOpen = settings;
+        inModal = false;
+
+        Glass.panel(x0, y0, pw, ph, 22);
+
+        // header
+        GFont.draw("Markie's Detector", x0 + 18, y0 + 15, 17, Col.LABEL, true);
+        GFont.draw("Records your fights (up to 4 opponents at once) and shows exactly where they cheat", x0 + 18, y0 + 36, 7.5f, Col.LABEL2, false);
+        boolean blocked = settings;
+        if (button("done", "Done", x0 + pw - 68, y0 + 14, 52, 20, Col.BLUE, 0.55f) && !blocked) close();
+        if (button("settings", "Settings", x0 + pw - 140, y0 + 14, 64, 20) && !blocked) settings = true;
+
+        // live card
+        float ly = y0 + 54, lh = 42;
+        drawLive(x0 + 14, ly, pw - 28, lh);
+
+        // list
+        float listTop = ly + lh + 22, listBottom = y0 + ph - 12;
+        GFont.draw("RECENT FIGHTS", x0 + 22, listTop - 13, 7, Col.LABEL3, true);
+        GFont.drawRight(fights.size() + " saved", x0 + pw - 22, listTop - 13, 7, Col.LABEL3, false);
+        // fights recorded together (2v2, FFA...) show as one group card
+        java.util.LinkedHashMap<String, List<FightMeta>> groups = new java.util.LinkedHashMap<>();
+        for (FightMeta m : fights) {
+            String key = m.groupId == null || m.groupId.isEmpty() ? m.id : m.groupId;
+            groups.computeIfAbsent(key, k -> new java.util.ArrayList<>()).add(m);
+        }
+        List<List<FightMeta>> items = new java.util.ArrayList<>(groups.values());
+        float cardH = 50, gap = 8;
+        float content = items.size() * (cardH + gap);
+        float maxScroll = Math.max(0, content - (listBottom - listTop));
+        if (!blocked) {
+            float sc = takeScroll();
+            if (sc != 0) scroll.to(Math.max(0, Math.min(maxScroll, scroll.target() - sc * 40)));
+        }
+        scroll.to(Math.max(0, Math.min(maxScroll, scroll.target()))).update(dt);
+
+        if (fights.isEmpty()) {
+            float cy = (listTop + listBottom) / 2f - 20;
+            Glass.ring(W / 2f, cy, 14, 2.5f, Col.a(0xFFFFFF, 0.25f));
+            GFont.drawCentered("No fights yet", W / 2f, cy + 22, 10, Col.LABEL, true);
+            GFont.drawCentered("Hit a player (or get hit) and a recording starts automatically.", W / 2f, cy + 36, 7.5f, Col.LABEL2, false);
+            if (button("demo", "Try a demo fight", W / 2f - 126, cy + 54, 120, 20, Col.INDIGO, 0.45f)) {
+                go(new FightReportScreen(this, dev.markiesdetector.analyzer.DemoFight.saveDemo()));
+            }
+            if (button("demo4", "Try a 4-player demo", W / 2f + 6, cy + 54, 120, 20, Col.PURPLE, 0.40f)) {
+                go(new FightReportScreen(this, dev.markiesdetector.analyzer.DemoFight.saveGroupDemo()));
+            }
+        } else {
+            ctx.enableScissor((int) x0 + 2, (int) listTop - 2, (int) (x0 + pw) - 2, (int) listBottom);
+            for (int i = 0; i < items.size(); i++) {
+                float cy = listTop + i * (cardH + gap) - scroll.get();
+                if (cy > listBottom || cy + cardH < listTop - 4) continue;
+                Spring enter = spring("enter" + i, 0f, 150f, 18f);
+                if (age > i * 0.04f) enter.to(1f);
+                float e = enter.get();
+                float ox = (1f - e) * 30f;
+                float old = Glass.alpha;
+                Glass.alpha *= Math.max(0, Math.min(1, e));
+                List<FightMeta> g = items.get(i);
+                boolean inter = !blocked && my >= listTop && my < listBottom;
+                if (g.size() == 1) drawCard(g.get(0), x0 + 14 + ox, cy, pw - 28, cardH, inter);
+                else drawGroupCard(g, x0 + 14 + ox, cy, pw - 28, cardH, inter);
+                Glass.alpha = old;
+            }
+            ctx.disableScissor();
+            if (maxScroll > 0) {
+                float trackH = listBottom - listTop, thumb = Math.max(20, trackH * trackH / (content));
+                float ty = listTop + (trackH - thumb) * (scroll.get() / maxScroll);
+                Glass.round(x0 + pw - 7, ty, 3, thumb, 1.5f, Col.a(0xFFFFFF, 0.3f));
+            }
+        }
+
+        if (sheet.get() > 0.01f) {
+            inModal = true;
+            drawSettings(W, H);
+            inModal = false;
+        }
+    }
+
+    private void drawLive(float x, float y, float w, float h) {
+        FightTracker.Live l = FightTracker.primary();
+        List<FightTracker.Live> all = new java.util.ArrayList<>(FightTracker.lives.values());
+        boolean on = PvpConfig.get().analyzerEnabled;
+        Glass.round(x, y, w, h, 14, Col.a(0xFFFFFF, 0.07f), Col.a(0xFFFFFF, 0.03f));
+        Glass.rim(x, y, w, h, 14, Col.a(0xFFFFFF, 0.22f), Col.a(0xFFFFFF, 0.05f));
+        float pulse = 0.5f + 0.5f * (float) Math.sin(Glass.time * 5f);
+        if (l != null) {
+            Glass.glow(x + 18, y + h / 2f, 12 + pulse * 4, Col.a(Col.RED, 0.45f));
+            Glass.dot(x + 18, y + h / 2f, 4.5f, Col.a(Col.RED, 1f));
+            StringBuilder names = new StringBuilder();
+            float sc = 0;
+            for (FightTracker.Live o : all) {
+                if (names.length() > 0) names.append(", ");
+                names.append(o.rec.opName);
+                sc = Math.max(sc, o.analyzer.score());
+            }
+            GFont.draw(GFont.fit("Recording vs " + names, w - 220, 10, true), x + 32, y + 9, 10, Col.LABEL, true);
+            String sub = (all.size() > 1 ? all.size() + " opponents  \u2022  " : "") + Ui.time(l.ticks()) + "  •  " + l.analyzer.flags.size() + " flags  •  " + l.analyzer.hitsGiven + " hits given / " + l.analyzer.hitsTaken + " taken";
+            GFont.draw(sub, x + 32, y + 24, 7.5f, Col.LABEL2, false);
+            float bw = 90;
+            GFont.drawRight(Math.round(sc) + "%", x + w - 14, y + 8, 12, Col.a(Col.score(sc), 1f), true);
+            Glass.round(x + w - 14 - bw, y + 27, bw, 4, 2, Col.a(0xFFFFFF, 0.12f));
+            Glass.round(x + w - 14 - bw, y + 27, bw * sc / 100f, 4, 2, Col.a(Col.score(sc), 1f));
+            if (button("stop", "Stop", x + w - 160, y + 11, 44, 20, Col.RED, 0.35f) && !settings) FightTracker.end("END");
+        } else {
+            int dotCol = on ? Col.GREEN : Col.GRAY;
+            Glass.glow(x + 18, y + h / 2f, 11, Col.a(dotCol, 0.35f));
+            Glass.dot(x + 18, y + h / 2f, 4, Col.a(dotCol, 1f));
+            GFont.draw(on ? "Ready" : "Analyzer is off", x + 32, y + 9, 10, Col.LABEL, true);
+            String sub = on ? (FightTracker.forcedTarget != null ? "Waiting for a fight with " + FightTracker.forcedTarget
+                : "Waiting for a fight. Recording starts on the first hit.") : "Turn it on in Settings to record fights.";
+            GFont.draw(sub, x + 32, y + 24, 7.5f, Col.LABEL2, false);
+        }
+    }
+
+    /** One card for a fight against several players at once. */
+    private void drawGroupCard(List<FightMeta> g, float x, float y, float w, float h, boolean interactive) {
+        String key = g.get(0).groupId;
+        boolean hov = interactive && hover(x, y, w, h);
+        Spring hs = spring("card" + key, 0f);
+        hs.to(hov ? 1f : 0f);
+        float k = hs.get();
+        Glass.button(x - k, y - k * 0.5f, w + 2 * k, h + k, 15, 0x1C1C1E, 0.30f, k * 0.6f);
+        List<FightMeta> sorted = new java.util.ArrayList<>(g);
+        sorted.sort((a, b) -> Float.compare(b.score, a.score));
+        // stacked heads
+        int n = Math.min(4, sorted.size());
+        for (int i = n - 1; i >= 0; i--) {
+            FightMeta m = sorted.get(i);
+            Ui.head(Ui.skin(m.opUuid, m.opName, m.opTex, m.opSig), x + 12 + i * 11, y + (h - 22) / 2f, 22);
+        }
+        float tx = x + 12 + (n - 1) * 11 + 30;
+        GFont.draw("Group fight \u2022 " + sorted.size() + " opponents", tx, y + 9, 10.5f, Col.LABEL, true);
+        int ticks = 0;
+        long start = Long.MAX_VALUE;
+        for (FightMeta m : g) { ticks = Math.max(ticks, m.ticks); start = Math.min(start, m.start); }
+        String sub = Ui.date(start) + "  \u2022  " + Ui.duration(ticks) + (g.get(0).server == null || g.get(0).server.isEmpty() ? "" : "  \u2022  " + g.get(0).server);
+        GFont.draw(GFont.fit(sub, w * 0.45f, 7.5f, false), tx, y + 25, 7.5f, Col.LABEL3, false);
+        float cx = tx;
+        for (FightMeta m : sorted) {
+            String label = GFont.fit(m.opName, 70, 7, true) + " " + Math.round(m.score) + "%";
+            if (cx + GFont.width(label, 7, true) + 10 > x + w - 180) break;
+            cx += chip(label, cx, y + 35, Col.score(m.score)) + 4;
+        }
+        FightMeta worst = sorted.get(0);
+        int col = Col.score(worst.score);
+        float rx = x + w - 14;
+        GFont.drawRight(Math.round(worst.score) + "%", rx, y + 9, 15, Col.a(col, 1f), true);
+        GFont.drawRight("worst: " + GFont.fit(worst.opName, 80, 7.5f, false), rx, y + 30, 7.5f, Col.LABEL2, false);
+        if (hov) {
+            boolean confirm = key.equals(confirmDelete);
+            float bx = rx - 160, by = y + (h - 18) / 2f;
+            if (button("del" + key, confirm ? "Sure?" : "Delete", bx, by, 52, 18, Col.RED, confirm ? 0.6f : 0.25f)) {
+                if (confirm) { for (FightMeta m : g) FightStore.delete(m.id); confirmDelete = null; }
+                else confirmDelete = key;
+                return;
+            }
+        }
+        if (interactive && clicked(x, y, w, h)) go(new FightReportScreen(this, sorted));
+    }
+
+    private void drawCard(FightMeta m, float x, float y, float w, float h, boolean interactive) {
+        boolean hov = interactive && hover(x, y, w, h);
+        Spring hs = spring("card" + m.id, 0f);
+        hs.to(hov ? 1f : 0f);
+        float k = hs.get();
+        Glass.button(x - k, y - k * 0.5f, w + 2 * k, h + k, 15, 0x1C1C1E, 0.30f, k * 0.6f);
+
+        Ui.head(Ui.skin(m.opUuid, m.opName, m.opTex, m.opSig), x + 12, y + (h - 26) / 2f, 26);
+        float tx = x + 48;
+        GFont.draw(GFont.fit(m.opName, w * 0.35f, 10.5f, true), tx, y + 9, 10.5f, Col.LABEL, true);
+        String res = m.result == null ? "END" : m.result;
+        int resCol = res.equals("WIN") ? Col.GREEN : res.equals("LOSS") ? Col.RED : Col.GRAY;
+        float nameW = GFont.width(GFont.fit(m.opName, w * 0.35f, 10.5f, true), 10.5f, true);
+        chip(res.equals("END") ? "ENDED" : res, tx + nameW + 6, y + 9, resCol);
+        String sub = Ui.date(m.start) + "  •  " + Ui.duration(m.ticks) + (m.server == null || m.server.isEmpty() ? "" : "  •  " + m.server);
+        GFont.draw(GFont.fit(sub, w * 0.45f, 7.5f, false), tx, y + 25, 7.5f, Col.LABEL3, false);
+        float cx = tx;
+        for (String t : m.top) {
+            try {
+                CheckType c = CheckType.valueOf(t);
+                cx += chip(c.title, cx, y + 35, c.color) + 4;
+            } catch (IllegalArgumentException ignored) {
+            }
+        }
+
+        int col = Col.score(m.score);
+        float rx = x + w - 14;
+        GFont.drawRight(Math.round(m.score) + "%", rx, y + 9, 15, Col.a(col, 1f), true);
+        GFont.drawRight(Analyzer.verdict(m.score), rx, y + 30, 7.5f, Col.LABEL2, false);
+        Ui.sparkline(m.spark, rx - 150, y + 12, 70, 22, col);
+
+        if (hov) {
+            boolean confirm = m.id.equals(confirmDelete);
+            float bx = rx - 236, by = y + (h - 18) / 2f;
+            if (button("del" + m.id, confirm ? "Sure?" : "Delete", bx, by, 52, 18, Col.RED, confirm ? 0.6f : 0.25f)) {
+                if (confirm) { FightStore.delete(m.id); confirmDelete = null; }
+                else confirmDelete = m.id;
+                return;
+            }
+        }
+        if (interactive && clicked(x, y, w, h)) go(new FightReportScreen(this, m));
+    }
+
+    private void drawSettings(float W, float H) {
+        float k = sheet.get();
+        Glass.rect(0, 0, W, H, Col.a(0x000000, 0.35f * Math.min(1, k)));
+        float sw = Math.min(330, W - 30), sh = 276;
+        float sx = (W - sw) / 2f, sy = H - sh - 14 + (1f - k) * (sh + 30);
+        Glass.panel(sx, sy, sw, sh, 24, 0x1C1C1E, 1.1f);
+        GFont.draw("Settings", sx + 18, sy + 16, 14, Col.LABEL, true);
+        if (button("sheetdone", "Done", sx + sw - 66, sy + 14, 50, 20, Col.BLUE, 0.55f)) {
+            settings = false;
+            PvpConfig.save();
+        }
+        PvpConfig c = PvpConfig.get();
+        float ry = sy + 46, rh = 26;
+        String[] labels = {"Analyze my fights", "Live island at top of screen", "Save fights to disk", "Summary in chat after a fight", "Save the map around fights (3D replay)"};
+        for (int i = 0; i < labels.length; i++) {
+            float y = ry + i * rh;
+            GFont.draw(labels[i], sx + 18, y + 5, 8.5f, Col.LABEL, false);
+            boolean v = switch (i) { case 0 -> c.analyzerEnabled; case 1 -> c.analyzerHud; case 2 -> c.analyzerSave; case 3 -> c.analyzerChat; default -> c.analyzerSaveWorld; };
+            if (toggle("t" + i, sx + sw - 48, y + 1, v)) {
+                switch (i) {
+                    case 0 -> c.analyzerEnabled = !v;
+                    case 1 -> c.analyzerHud = !v;
+                    case 2 -> c.analyzerSave = !v;
+                    case 3 -> c.analyzerChat = !v;
+                    default -> c.analyzerSaveWorld = !v;
+                }
+            }
+            if (i < labels.length - 1) Glass.rect(sx + 18, y + rh - 3, sw - 36, 0.5f, Col.a(0xFFFFFF, 0.08f));
+        }
+        float y = ry + labels.length * rh + 4;
+        String sensName = c.analyzerSensitivity < 0.92f ? "Strict" : c.analyzerSensitivity > 1.12f ? "Relaxed" : "Normal";
+        GFont.draw("Sensitivity", sx + 18, y, 8.5f, Col.LABEL, false);
+        GFont.drawRight(sensName, sx + sw - 18, y, 8.5f, Col.LABEL2, false);
+        float v = slider("sens", sx + 22, y + 17, sw - 44, (c.analyzerSensitivity - 0.8f) / 0.5f);
+        c.analyzerSensitivity = 0.8f + Math.round(v * 10) / 10f * 0.5f;
+        y += 30;
+        GFont.draw("End fight after no hits for", sx + 18, y, 8.5f, Col.LABEL, false);
+        GFont.drawRight(c.analyzerTimeout + " s", sx + sw - 18, y, 8.5f, Col.LABEL2, false);
+        float tv = slider("timeout", sx + 22, y + 17, sw - 44, (c.analyzerTimeout - 5) / 55f);
+        c.analyzerTimeout = 5 + Math.round(tv * 55);
+        y += 30;
+        if (button("folder", "Open fights folder", sx + 18, y, sw - 36, 20)) {
+            try {
+                java.nio.file.Files.createDirectories(FightStore.dir());
+                Util.getOperatingSystem().open(FightStore.dir());
+            } catch (Exception ignored) {
+            }
+        }
+        consumeClick();   // the sheet is modal
+    }
+
+    @Override
+    protected void onClosed() {
+        PvpConfig.save();
+    }
+}

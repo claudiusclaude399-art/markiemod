@@ -1,6 +1,6 @@
-package dev.pvpmod.mixin;
+package dev.markiesdetector.mixin;
 
-import dev.pvpmod.config.PvpConfig;
+import dev.markiesdetector.config.PvpConfig;
 import net.minecraft.client.model.ModelPart;
 import net.minecraft.client.render.entity.model.EndCrystalEntityModel;
 import net.minecraft.client.render.entity.state.EndCrystalEntityRenderState;
@@ -19,7 +19,7 @@ public abstract class EndCrystalEntityModelMixin {
 
     @Inject(method = "setAngles(Lnet/minecraft/client/render/entity/state/EndCrystalEntityRenderState;)V",
             at = @At("RETURN"), require = 0)
-    private void pvpmod$parts(EndCrystalEntityRenderState state, CallbackInfo ci) {
+    private void markiesdetector$parts(EndCrystalEntityRenderState state, CallbackInfo ci) {
         PvpConfig c = PvpConfig.get();
         this.outerGlass.visible = c.crystal3d;
         this.innerGlass.visible = c.crystal3d;

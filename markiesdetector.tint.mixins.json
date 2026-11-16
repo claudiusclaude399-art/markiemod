@@ -1,0 +1,15 @@
+{
+  "required": false,
+  "minVersion": "0.8",
+  "package": "dev.markiesdetector.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "client": [
+    "HeldItemTintMixin",
+    "LayerRenderStateMixin",
+    "ItemRendererMixin",
+    "EquipmentRendererMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 0
+  }
+}

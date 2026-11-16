@@ -1,4 +1,4 @@
-package dev.pvpmod;
+package dev.markiesdetector;
 
 /** Tiny shared state for the colour tints. */
 public final class PvpTint {

@@ -1,4 +1,4 @@
-package dev.pvpmod.gui;
+package dev.markiesdetector.gui;
 
 import net.minecraft.client.gui.widget.SliderWidget;
 import net.minecraft.text.Text;

@@ -1,8 +1,8 @@
-package dev.pvpmod.config;
+package dev.markiesdetector.config;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
-import dev.pvpmod.PvpTint;
+import dev.markiesdetector.PvpTint;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.particle.AnimatedParticle;
 import net.minecraft.client.particle.Particle;
@@ -24,7 +24,8 @@ public class PvpConfig {
     public static final String TOTEM_PARTICLE = "minecraft:totem_of_undying";
 
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
-    private static final Path FILE = FabricLoader.getInstance().getConfigDir().resolve("pvpmod.json");
+    private static final Path FILE = FabricLoader.getInstance().getConfigDir().resolve("markiesdetector.json");
+    private static final Path OLD_FILE = FabricLoader.getInstance().getConfigDir().resolve("pvpmod.json");
     private static PvpConfig instance = new PvpConfig();
 
     public float handScale = 1.0f;
@@ -63,6 +64,8 @@ public class PvpConfig {
 
     public static void load() {
         try {
+            // first launch after the rename: start from the old pvpmod settings
+            if (!Files.exists(FILE) && Files.exists(OLD_FILE)) Files.copy(OLD_FILE, FILE);
             if (Files.exists(FILE)) {
                 try (Reader r = Files.newBufferedReader(FILE)) {
                     PvpConfig c = GSON.fromJson(r, PvpConfig.class);
@@ -72,7 +75,7 @@ public class PvpConfig {
                 save();
             }
         } catch (Exception e) {
-            System.err.println("[PvpMod] Could not read config, using defaults: " + e);
+            System.err.println("[MarkiesDetector] Could not read config, using defaults: " + e);
         }
     }
 
@@ -83,7 +86,7 @@ public class PvpConfig {
                 GSON.toJson(instance, w);
             }
         } catch (IOException e) {
-            System.err.println("[PvpMod] Could not save config: " + e);
+            System.err.println("[MarkiesDetector] Could not save config: " + e);
         }
     }
 

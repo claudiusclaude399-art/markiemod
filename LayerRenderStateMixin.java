@@ -1,6 +1,6 @@
-package dev.pvpmod.mixin;
+package dev.markiesdetector.mixin;
 
-import dev.pvpmod.PvpTint;
+import dev.markiesdetector.PvpTint;
 import net.minecraft.client.render.command.OrderedRenderCommandQueue;
 import net.minecraft.client.render.item.ItemRenderState;
 import net.minecraft.client.util.math.MatrixStack;
@@ -18,7 +18,7 @@ public abstract class LayerRenderStateMixin {
     @Inject(method = "render(Lnet/minecraft/client/util/math/MatrixStack;"
                    + "Lnet/minecraft/client/render/command/OrderedRenderCommandQueue;III)V",
             at = @At("HEAD"), require = 0)
-    private void pvpmod$stamp(MatrixStack matrices, OrderedRenderCommandQueue queue,
+    private void markiesdetector$stamp(MatrixStack matrices, OrderedRenderCommandQueue queue,
                               int light, int overlay, int outline, CallbackInfo ci) {
         int c = PvpTint.current;
         if (c != PvpTint.NONE) {

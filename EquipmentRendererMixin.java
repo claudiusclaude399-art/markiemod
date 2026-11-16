@@ -1,7 +1,7 @@
-package dev.pvpmod.mixin;
+package dev.markiesdetector.mixin;
 
-import dev.pvpmod.PvpTint;
-import dev.pvpmod.config.PvpConfig;
+import dev.markiesdetector.PvpTint;
+import dev.markiesdetector.config.PvpConfig;
 import net.minecraft.client.model.Model;
 import net.minecraft.client.render.command.OrderedRenderCommandQueue;
 import net.minecraft.client.render.entity.equipment.EquipmentModel;
@@ -30,35 +30,35 @@ public abstract class EquipmentRendererMixin {
         "getDyeColor(Lnet/minecraft/client/render/entity/equipment/EquipmentModel$Layer;I)I";
 
     @Inject(method = R9, at = @At("HEAD"), require = 0)
-    private void pvpmod$start9(EquipmentModel.LayerType type, RegistryKey<?> key, Model<?> model, Object state,
+    private void markiesdetector$start9(EquipmentModel.LayerType type, RegistryKey<?> key, Model<?> model, Object state,
                                ItemStack stack, MatrixStack matrices, OrderedRenderCommandQueue queue,
                                int light, int outline, CallbackInfo ci) {
         PvpTint.armor = PvpConfig.get().colorFor(stack);
     }
 
     @Inject(method = R9, at = @At("RETURN"), require = 0)
-    private void pvpmod$end9(EquipmentModel.LayerType type, RegistryKey<?> key, Model<?> model, Object state,
+    private void markiesdetector$end9(EquipmentModel.LayerType type, RegistryKey<?> key, Model<?> model, Object state,
                              ItemStack stack, MatrixStack matrices, OrderedRenderCommandQueue queue,
                              int light, int outline, CallbackInfo ci) {
         PvpTint.armor = PvpTint.NONE;
     }
 
     @Inject(method = R11, at = @At("HEAD"), require = 0)
-    private void pvpmod$start11(EquipmentModel.LayerType type, RegistryKey<?> key, Model<?> model, Object state,
+    private void markiesdetector$start11(EquipmentModel.LayerType type, RegistryKey<?> key, Model<?> model, Object state,
                                 ItemStack stack, MatrixStack matrices, OrderedRenderCommandQueue queue,
                                 int light, Identifier id, int a, int b, CallbackInfo ci) {
         PvpTint.armor = PvpConfig.get().colorFor(stack);
     }
 
     @Inject(method = R11, at = @At("RETURN"), require = 0)
-    private void pvpmod$end11(EquipmentModel.LayerType type, RegistryKey<?> key, Model<?> model, Object state,
+    private void markiesdetector$end11(EquipmentModel.LayerType type, RegistryKey<?> key, Model<?> model, Object state,
                               ItemStack stack, MatrixStack matrices, OrderedRenderCommandQueue queue,
                               int light, Identifier id, int a, int b, CallbackInfo ci) {
         PvpTint.armor = PvpTint.NONE;
     }
 
     @Inject(method = DYE, at = @At("RETURN"), cancellable = true, require = 0)
-    private static void pvpmod$dye(EquipmentModel.Layer layer, int dyeColor, CallbackInfoReturnable<Integer> cir) {
+    private static void markiesdetector$dye(EquipmentModel.Layer layer, int dyeColor, CallbackInfoReturnable<Integer> cir) {
         if (PvpTint.armor != PvpTint.NONE) cir.setReturnValue(0xFF000000 | PvpTint.armor);
     }
 }

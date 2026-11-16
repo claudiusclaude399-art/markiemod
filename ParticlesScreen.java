@@ -1,6 +1,6 @@
-package dev.pvpmod.gui;
+package dev.markiesdetector.gui;
 
-import dev.pvpmod.config.PvpConfig;
+import dev.markiesdetector.config.PvpConfig;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.registry.Registries;
 import net.minecraft.util.Identifier;
