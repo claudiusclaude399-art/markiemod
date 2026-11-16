@@ -196,6 +196,11 @@ public final class FightTracker {
         Live l = new Live(op);
         l.rec.start = System.currentTimeMillis();
         l.rec.id = new SimpleDateFormat("yyyyMMdd-HHmmss").format(new Date(l.rec.start)) + "-" + op.getGameProfile().name().replaceAll("[^A-Za-z0-9_]", "");
+        l.rec.meUuid = mc.player.getUuid().toString();
+        l.rec.meName = mc.player.getGameProfile().name();
+        String[] meTex = textures(mc, mc.player), opTex = textures(mc, op);
+        l.rec.meTex = meTex[0]; l.rec.meSig = meTex[1];
+        l.rec.opTex = opTex[0]; l.rec.opSig = opTex[1];
         l.rec.server = mc.getCurrentServerEntry() != null ? mc.getCurrentServerEntry().address : (mc.isInSingleplayer() ? "Singleplayer" : "");
         l.rec.dim = mc.world.getRegistryKey().getValue().toString();
 
@@ -339,6 +344,20 @@ public final class FightTracker {
         if (mc.getNetworkHandler() == null) return 0;
         PlayerListEntry e = mc.getNetworkHandler().getPlayerListEntry(id);
         return e == null ? 0 : Math.max(0, Math.min(1000, e.getLatency()));
+    }
+
+    /** The signed skin property of a player ({value, signature}), from the tab list or their profile. */
+    private static String[] textures(MinecraftClient mc, PlayerEntity p) {
+        com.mojang.authlib.GameProfile profile = p.getGameProfile();
+        if (mc.getNetworkHandler() != null) {
+            PlayerListEntry e = mc.getNetworkHandler().getPlayerListEntry(p.getUuid());
+            if (e != null) profile = e.getProfile();
+        }
+        if (p == mc.player && profile.properties().get("textures").isEmpty()) profile = mc.getGameProfile();
+        for (com.mojang.authlib.properties.Property prop : profile.properties().get("textures")) {
+            return new String[]{prop.value(), prop.signature() == null ? "" : prop.signature()};
+        }
+        return new String[]{"", ""};
     }
 
     private static boolean isTotem(ItemStack s) { return s.isOf(net.minecraft.item.Items.TOTEM_OF_UNDYING); }

@@ -18,6 +18,7 @@ the rest of the mod still loads.
 
 ![Overview](docs/overview.jpg)
 ![Replay](docs/replay.jpg)
+![Their eyes](docs/replay-eyes.jpg)
 ![Graphs](docs/graphs.jpg)
 
 Press **J** (or `/pvpmod fights`, or the "Fight Analyzer" button in `/pvpmod`) to open it.
@@ -31,7 +32,7 @@ Each fight gets a report with four tabs:
 - **Overview**: suspicion ring (0-100%), verdict, a score per check and fight stats (max/avg reach, peak CPS, hits, pops).
 - **Graphs**: reach per hit, CPS, aim error, speed, health of both players and suspicion over time. Flags are marked
   on the lines. Click any graph to jump to that moment in the replay.
-- **Replay**: a 3D reconstruction of the fight (orbit, top-down, or **their eyes**, which shows what the opponent
+- **Replay**: a 3D reconstruction of the fight with both players drawn as real models wearing their skins (walking, arm swings on hits, head pitch) (orbit, top-down, or **their eyes**, which shows what the opponent
   was looking at). Hitboxes, look rays, hit lines with the measured reach, totem pops and a pin at every flagged
   moment. The timeline shows every flag; `F` jumps to the next one, space plays, arrow keys step a tick.
 - **Flags**: every suspicious moment in order, with the measured value. Click one to watch it.

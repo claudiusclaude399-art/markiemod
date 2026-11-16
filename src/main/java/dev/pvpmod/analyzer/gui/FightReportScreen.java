@@ -144,9 +144,16 @@ public class FightReportScreen extends GlassScreen {
         Glass.panel(x0, y0, pw, ph, 22);
 
         if (backButton("Fights", x0 + 12, y0 + 12)) close();
-        Ui.head(meta.opUuid, x0 + 90, y0 + 11, 22);
-        GFont.draw(GFont.fit("vs " + meta.opName, 150, 12, true), x0 + 118, y0 + 11, 12, Col.LABEL, true);
-        GFont.draw(Ui.date(meta.start) + "  •  " + Ui.duration(meta.ticks), x0 + 118, y0 + 25, 7, Col.LABEL3, false);
+        float hx = x0 + 90;
+        if (rec != null) {
+            String myId = rec.meUuid == null || rec.meUuid.isEmpty() ? client.getGameProfile().id().toString() : rec.meUuid;
+            Ui.head(Ui.skin(myId, rec.meName, rec.meTex, rec.meSig), hx, y0 + 11, 22);
+            GFont.drawCentered("vs", hx + 33, y0 + 17, 7.5f, Col.LABEL3, true);
+            hx += 44;
+        }
+        Ui.head(Ui.skin(meta.opUuid, meta.opName, meta.opTex, meta.opSig), hx, y0 + 11, 22);
+        GFont.draw(GFont.fit(meta.opName, 150, 12, true), hx + 28, y0 + 11, 12, Col.LABEL, true);
+        GFont.draw(Ui.date(meta.start) + "  \u2022  " + Ui.duration(meta.ticks), hx + 28, y0 + 25, 7, Col.LABEL3, false);
 
         boolean wide = pw >= 560;
         float segW = wide ? 300 : Math.min(300, pw - 24);

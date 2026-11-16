@@ -126,6 +126,14 @@ public final class DemoFight {
     /** Create, analyse and save a demo fight. */
     public static FightRecord.FightMeta saveDemo() {
         FightRecord r = create();
+        var mc = net.minecraft.client.MinecraftClient.getInstance();
+        var me = mc.getGameProfile();
+        r.meUuid = me.id().toString();
+        r.meName = me.name();
+        for (var prop : me.properties().get("textures")) {
+            r.meTex = prop.value();
+            r.meSig = prop.signature() == null ? "" : prop.signature();
+        }
         Analyzer a = Analyzer.run(r);
         FightRecord.FightMeta m = r.meta(a);
         FightStore.save(r, m);

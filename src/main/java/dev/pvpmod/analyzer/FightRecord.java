@@ -9,6 +9,9 @@ public class FightRecord {
     public String id = "";
     public String opName = "?";
     public String opUuid = "";
+    public String meName = "", meUuid = "";
+    /** Signed "textures" profile properties, so skins still load after the players log off. */
+    public String opTex = "", opSig = "", meTex = "", meSig = "";
     public String server = "";
     public String dim = "";
     public long start;
@@ -25,6 +28,8 @@ public class FightRecord {
         m.id = id;
         m.opName = opName;
         m.opUuid = opUuid;
+        m.opTex = opTex;
+        m.opSig = opSig;
         m.server = server;
         m.start = start;
         m.ticks = ticks();
@@ -47,7 +52,7 @@ public class FightRecord {
 
     /** Small summary stored next to each fight, so the list opens instantly. */
     public static class FightMeta {
-        public String id, opName, opUuid, server, result;
+        public String id, opName, opUuid, server, result, opTex = "", opSig = "";
         public long start;
         public int ticks, flags, hitsGiven, hitsTaken;
         public float score;

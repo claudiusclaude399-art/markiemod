@@ -1,5 +1,9 @@
 package dev.pvpmod.analyzer.gui;
 
+import com.google.common.collect.ImmutableMultimap;
+import com.mojang.authlib.GameProfile;
+import com.mojang.authlib.properties.Property;
+import com.mojang.authlib.properties.PropertyMap;
 import dev.pvpmod.glass.Col;
 import dev.pvpmod.glass.Glass;
 import net.minecraft.client.MinecraftClient;
@@ -10,7 +14,10 @@ import net.minecraft.entity.player.SkinTextures;
 
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
+import java.util.function.Supplier;
 
 /** Small shared helpers for the analyzer screens. */
 final class Ui {
@@ -32,7 +39,15 @@ final class Ui {
         return new SimpleDateFormat("d MMM, HH:mm").format(new Date(epoch));
     }
 
-    static SkinTextures skin(String uuid) {
+    private static final Map<String, Supplier<SkinTextures>> SKINS = new HashMap<>();
+
+    static SkinTextures skin(String uuid) { return skin(uuid, "", "", ""); }
+
+    /**
+     * Skin for a player: from the tab list when they are online, otherwise from the skin property saved with the
+     * fight (loaded through the game's skin cache), otherwise the default skin for their UUID.
+     */
+    static SkinTextures skin(String uuid, String name, String tex, String sig) {
         UUID id;
         try { id = UUID.fromString(uuid); } catch (Exception e) { return DefaultSkinHelper.getSteve(); }
         MinecraftClient mc = MinecraftClient.getInstance();
@@ -40,14 +55,34 @@ final class Ui {
             PlayerListEntry e = mc.getNetworkHandler().getPlayerListEntry(id);
             if (e != null) return e.getSkinTextures();
         }
-        return DefaultSkinHelper.getSkinTextures(id);
+        Supplier<SkinTextures> s = SKINS.computeIfAbsent(uuid, k -> {
+            GameProfile profile;
+            if (tex != null && !tex.isEmpty()) {
+                Property prop = sig == null || sig.isEmpty() ? new Property("textures", tex) : new Property("textures", tex, sig);
+                profile = new GameProfile(id, name == null || name.isEmpty() ? "player" : name,
+                    new PropertyMap(ImmutableMultimap.of("textures", prop)));
+            } else if (id.equals(mc.getGameProfile().id())) {
+                profile = mc.getGameProfile();
+            } else {
+                return () -> DefaultSkinHelper.getSkinTextures(id);
+            }
+            try {
+                return mc.getSkinProvider().supplySkinTextures(profile, false);
+            } catch (Exception ex) {
+                return () -> DefaultSkinHelper.getSkinTextures(id);
+            }
+        });
+        SkinTextures t = s.get();
+        return t == null ? DefaultSkinHelper.getSkinTextures(id) : t;
     }
 
     /** Player head inside a rounded glass frame. */
-    static void head(String uuid, float x, float y, int size) {
+    static void head(String uuid, float x, float y, int size) { head(skin(uuid), x, y, size); }
+
+    static void head(SkinTextures skin, float x, float y, int size) {
         Glass.shadow(x, y, size, size, size * 0.28f, 5, Col.a(0, 0.35f));
         Glass.round(x - 1, y - 1, size + 2, size + 2, size * 0.28f, Col.a(0xFFFFFF, 0.18f));
-        PlayerSkinDrawer.draw(Glass.ctx(), skin(uuid), Math.round(x), Math.round(y), size);
+        PlayerSkinDrawer.draw(Glass.ctx(), skin, Math.round(x), Math.round(y), size);
         Glass.rim(x - 1, y - 1, size + 2, size + 2, size * 0.28f, Col.a(0xFFFFFF, 0.5f), Col.a(0xFFFFFF, 0.12f));
     }
 

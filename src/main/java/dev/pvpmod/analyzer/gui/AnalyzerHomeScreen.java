@@ -150,7 +150,7 @@ public class AnalyzerHomeScreen extends GlassScreen {
         float k = hs.get();
         Glass.button(x - k, y - k * 0.5f, w + 2 * k, h + k, 15, 0x1C1C1E, 0.30f, k * 0.6f);
 
-        Ui.head(m.opUuid, x + 12, y + (h - 26) / 2f, 26);
+        Ui.head(Ui.skin(m.opUuid, m.opName, m.opTex, m.opSig), x + 12, y + (h - 26) / 2f, 26);
         float tx = x + 48;
         GFont.draw(GFont.fit(m.opName, w * 0.35f, 10.5f, true), tx, y + 9, 10.5f, Col.LABEL, true);
         String res = m.result == null ? "END" : m.result;
