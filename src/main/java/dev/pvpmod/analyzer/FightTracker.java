@@ -103,7 +103,7 @@ public final class FightTracker {
             l.lastCombat = l.t;
             if (melee) {
                 FightEvent e = new FightEvent(l.t, FightEvent.Kind.HIT_ME).at(op.getX(), op.getY(), op.getZ());
-                e.b = !lineOfSight(mc.world, op, me);
+                e.b = !lineOfSight(mc.world, op, me, ping(mc, me.getUuid()) + ping(mc, op.getUuid()));
                 l.pending.add(e);
             } else {
                 l.pending.add(new FightEvent(l.t, FightEvent.Kind.BLAST_ME).at(me.getX(), me.getY(), me.getZ()));
@@ -390,6 +390,7 @@ public final class FightTracker {
         if (p.isSneaking() || p.getPose() == EntityPose.CROUCHING) f |= PState.SNEAK;
         if (p.isGliding()) f |= PState.GLIDE;
         if (p.isTouchingWater() || p.isInLava() || inSlowBlock(world, p)) f |= PState.FLUID;
+        if (onSlipperyBlock(world, p)) f |= PState.SLIPPERY;
         if (p.isClimbing()) f |= PState.CLIMB;
         if (p.isUsingItem()) f |= PState.USING;
         if (p.hasVehicle()) f |= PState.VEHICLE;
@@ -417,6 +418,17 @@ public final class FightTracker {
         return !world.getOtherEntities(p, below.expand(0.05), e -> e.isCollidable(p)).isEmpty();
     }
 
+    /** Ice (and soul sand / soil for Soul Speed) let players legitimately move much faster. */
+    private static boolean onSlipperyBlock(ClientWorld world, LivingEntity p) {
+        BlockPos below = BlockPos.ofFloored(p.getX(), p.getY() - 0.3, p.getZ());
+        for (BlockPos bp : new BlockPos[]{below, below.down()}) {
+            BlockState st = world.getBlockState(bp);
+            if (st.isOf(Blocks.ICE) || st.isOf(Blocks.PACKED_ICE) || st.isOf(Blocks.BLUE_ICE) || st.isOf(Blocks.FROSTED_ICE)
+                || st.isOf(Blocks.SOUL_SAND) || st.isOf(Blocks.SOUL_SOIL) || st.isOf(Blocks.SLIME_BLOCK)) return true;
+        }
+        return false;
+    }
+
     private static boolean inSlowBlock(ClientWorld world, LivingEntity p) {
         BlockPos feet = p.getBlockPos();
         for (BlockPos bp : new BlockPos[]{feet, feet.up()}) {
@@ -427,20 +439,36 @@ public final class FightTracker {
         return false;
     }
 
-    /** Can {@code from} see any part of {@code to}'s hitbox? */
-    private static boolean lineOfSight(ClientWorld world, PlayerEntity from, PlayerEntity to) {
+    /**
+     * Could {@code from} have seen any part of {@code to}'s hitbox? Checked against where {@code to} was over the last
+     * (ping + jitter) ticks, because that is what their screen showed, using block outlines like a real crosshair.
+     */
+    private static boolean lineOfSight(ClientWorld world, PlayerEntity from, PlayerEntity to, int pingMs) {
         Vec3d eye = from.getInterpolator() != null && from.getInterpolator().isInterpolating()
             ? from.getInterpolator().getLerpedPos().add(0, from.getStandingEyeHeight(), 0) : from.getEyePos();
-        Box b = to.getBoundingBox();
-        Vec3d[] targets = {
-            b.getCenter(),
-            new Vec3d(b.getCenter().x, b.maxY - 0.1, b.getCenter().z),
-            new Vec3d(b.getCenter().x, b.minY + 0.1, b.getCenter().z),
-            new Vec3d(Math.max(b.minX, Math.min(eye.x, b.maxX)), Math.max(b.minY, Math.min(eye.y, b.maxY)), Math.max(b.minZ, Math.min(eye.z, b.maxZ)))
-        };
-        for (Vec3d t : targets) {
-            HitResult hr = world.raycast(new RaycastContext(eye, t, RaycastContext.ShapeType.COLLIDER, RaycastContext.FluidHandling.NONE, from));
-            if (hr.getType() == HitResult.Type.MISS) return true;
+        List<Box> boxes = new ArrayList<>();
+        boxes.add(to.getBoundingBox());
+        int k = Math.min(meHistory.size(), (int) Math.ceil(pingMs * 1.2 / 50.0) + 4);
+        Iterator<PState> it = meHistory.descendingIterator();
+        for (int i = 0; i < k && it.hasNext(); i++) {
+            PState p = it.next();
+            double hw = p.w / 2;
+            boxes.add(new Box(p.x - hw, p.y, p.z - hw, p.x + hw, p.y + p.h, p.z + hw));
+        }
+        for (Box b : boxes) {
+            Vec3d c = b.getCenter();
+            Vec3d[] targets = {
+                c,
+                new Vec3d(c.x, b.maxY - 0.1, c.z),
+                new Vec3d(c.x, b.minY + 0.1, c.z),
+                new Vec3d(b.minX + 0.05, c.y, b.minZ + 0.05),
+                new Vec3d(b.maxX - 0.05, c.y, b.maxZ - 0.05),
+                new Vec3d(Math.max(b.minX, Math.min(eye.x, b.maxX)), Math.max(b.minY, Math.min(eye.y, b.maxY)), Math.max(b.minZ, Math.min(eye.z, b.maxZ)))
+            };
+            for (Vec3d t : targets) {
+                HitResult hr = world.raycast(new RaycastContext(eye, t, RaycastContext.ShapeType.OUTLINE, RaycastContext.FluidHandling.NONE, from));
+                if (hr.getType() == HitResult.Type.MISS) return true;
+            }
         }
         return false;
     }

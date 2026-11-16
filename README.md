@@ -41,16 +41,28 @@ Checks (all done from what your client can see; nothing is sent to the server):
 
 | Check | What it looks for |
 |---|---|
-| Reach | Melee hits from further than 3.0 blocks, measured eye-to-hitbox with both pings allowed for |
-| Killaura | Hits while looking far away from you; snapping onto you to hit and snapping back |
-| Aim assist | Crosshair locked on you while you strafe faster than a human can track |
-| Autoclicker | 20+ CPS for 2+ seconds, or CPS so even it can't be a human |
-| Anti-knockback | Not moving back after your hits, with open space behind them (holes/walls are ignored) |
-| Speed | Faster than sprint-jumping, ignoring knockback, explosions, pearls, elytra, water |
-| Flight | Floating or rising with nothing below them, ignoring gravity |
-| Auto totem | A new totem in hand faster than human reaction time after a pop (their ping is subtracted) |
-| Crystal aura | Crystals placed and broken at inhuman speed, or placed without looking |
-| Through walls | Hits with solid blocks between their eyes and your hitbox |
+| Reach | Melee hits from further than 3.0 blocks, against the closest you were during their whole ping window |
+| Killaura | Hits while looking 75°+ away from you; snapping onto you to hit and snapping back to where they were looking |
+| Aim assist | Crosshair locked on you (within 2°) while you strafe faster than a human can track, for most of 5 seconds |
+| Autoclicker | 30+ CPS for 2+ seconds (drag clicking stays under this), or CPS so even it can't be a human |
+| Anti-knockback | Not pushed back and not lifted by your hits, with open space behind them |
+| Speed | Faster than 13 blocks/s for over a second, ignoring knockback, explosions, pearls, elytra, tridents, wind charges, ice |
+| Flight | Hovering or rising with nothing below them for over a second, while their position keeps updating |
+| Auto totem | A new totem in hand faster than human reaction time after a pop, after taking away their ping |
+| Crystal aura | 30+ crystals in 5 s broken as soon as their ping allows, or placed without looking |
+| Through walls | Hits with blocks in the way of every spot they could have seen you |
+
+How it avoids false flags, especially with laggy opponents:
+
+- **Their ping is always counted in their favour.** For reach, aim and wall hits it looks back over everywhere you were
+  during their ping (plus 20% for jitter and the game's smoothing), and uses the highest ping seen recently. For reaction
+  times (totems, crystals) it uses their *lowest* recent ping, so an out-of-date tab-list ping can't make them look faster.
+- **Lag spikes are skipped.** When their position freezes and then jumps, they disappear, or a ping spike hits,
+  nothing around that moment is judged.
+- **High ping counts for less.** Above 250 ms combined ping, reach, aim and killaura evidence counts 30% less (50% above 400 ms).
+- **One weird moment isn't enough.** A check with a single flag only counts at about half strength; it takes repeated
+  flags to push the score up.
+- Each moment is judged one second late, so the analyzer can see what happened right after it (knockback, totem refills).
 
 `/pvpmod demo` creates a simulated fight against a cheater so you can try the screens without a real fight.
 `/pvpmod analyze <name>` only records fights with that player (`/pvpmod analyze off` to undo), `/pvpmod stop` ends

@@ -3,7 +3,7 @@ package dev.pvpmod.analyzer;
 /** One player's state in one tick. Short field names keep the saved fights small. */
 public class PState {
     public static final int GROUND = 1, SPRINT = 2, SNEAK = 4, GLIDE = 8, FLUID = 16, CLIMB = 32,
-        SUPPORTED = 64, USING = 128, VEHICLE = 256, CREATIVE = 512, ABSENT = 1024;
+        SUPPORTED = 64, USING = 128, VEHICLE = 256, CREATIVE = 512, ABSENT = 1024, SLIPPERY = 2048;
 
     public double x, y, z;
     public float yw, pt;     // yaw (head), pitch
