@@ -23,6 +23,13 @@ public final class Counter {
             case AUTO_TOTEM -> "One pop won't finish them: line up two big hits back to back";
             case CRYSTAL_AURA -> "Get out of open crystal range: hole up and keep the high ground";
             case WALL_HIT -> "Blocks won't save you: heal far away or with full cover";
+            case CRITICALS -> "Every hit of theirs is a crit: don't trade, block or back off";
+            case NOSLOW -> "They don't slow down when they heal: pressure them mid-eat";
+            case FAST_EAT -> "Their gapples land fast: finish them before they can eat";
+            case HITBOX -> "Near-misses still hit: keep more distance than usual";
+            case STEP -> "Blocks won't slow them: don't rely on walls to escape";
+            case JESUS -> "Water won't stop them: don't flee across water";
+            case BLINK -> "Their hits can land while they look frozen: back off when they stop moving";
         };
     }
 
@@ -69,6 +76,34 @@ public final class Counter {
                 "Thin walls don't protect you from them: heal and re-gear far away, or behind full blocks.",
                 "Don't stand still behind cover, because they can still hit you there.",
                 "Use the gap to reposition, not to rest.");
+            case CRITICALS -> List.of(
+                "Every hit of theirs deals crit damage (+50%), so even trades lose. Avoid back-and-forth hit exchanges.",
+                "Hold a shield or back off between their swings, then punish with your own jump-crits.",
+                "Wear your best armor and Protection: their damage is higher than normal.");
+            case NOSLOW -> List.of(
+                "They keep running while eating or blocking, so they can heal while chasing you. Never give them free space to eat.",
+                "Pressure them the moment they start eating: they can't swing while eating.",
+                "Their shield doesn't slow them: use an axe to disable it instead of waiting.");
+            case FAST_EAT -> List.of(
+                "Their golden apples go down fast, so a short gap is enough for them to heal. Don't back off to reset.",
+                "Keep the pressure on without pauses; kill windows are short.",
+                "Count their gapples: their healing runs out like anyone else's.");
+            case HITBOX -> List.of(
+                "Their near misses still hit you, as if your hitbox were bigger. Keep half a block more distance than usual.",
+                "Dodging by a hair won't work: move clearly out of the way, or block.",
+                "Play for spacing and knockback, not for making them miss.");
+            case STEP -> List.of(
+                "Single blocks and walls don't slow them down: don't count on terrain to escape.",
+                "Use tall walls (2+ blocks), cobwebs or water to slow them instead.",
+                "Fight on open, flat ground where their step gives them nothing.");
+            case JESUS -> List.of(
+                "They walk on water at full speed while you swim. Never flee across water.",
+                "Lure them over water then fight from land; you can still hit them from the shore.",
+                "Use a bow or trident while they're on the water.");
+            case BLINK -> List.of(
+                "They hold back their movement, so their position on your screen is out of date. When they suddenly stand still, back off: hits can still land.",
+                "Watch for them jumping forward after a freeze; that's when they land hits from somewhere else.",
+                "Keep extra distance and use knockback. Report them: blinking is easy for staff to spot.");
         };
     }
 
@@ -95,6 +130,13 @@ public final class Counter {
             case AUTO_TOTEM -> String.format("You popped them %d times and they had a new totem back almost instantly.", a.popsOp);
             case CRYSTAL_AURA -> String.format("They used %d crystals near you, broken faster than a human could react.", a.crystals);
             case WALL_HIT -> "They hit you while blocks were between you.";
+            case CRITICALS -> a.flagCount(CheckType.CRITICALS) + " of their critical hits came without a jump or a fall.";
+            case NOSLOW -> "They kept running while eating, drinking or blocking.";
+            case FAST_EAT -> "They finished golden apples well under the normal 1.6 seconds.";
+            case HITBOX -> "Their hits kept landing even though they were aiming beside you.";
+            case STEP -> "They climbed full blocks instantly without jumping.";
+            case JESUS -> "They walked on the water's surface.";
+            case BLINK -> a.flagCount(CheckType.BLINK) + " of their hits landed while their movement was frozen.";
         };
     }
 

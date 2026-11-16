@@ -332,9 +332,22 @@ public class FightReportScreen extends GlassScreen {
         card(rx, y, rw, h);
         GFont.draw("Checks", rx + 14, y + 12, 11, Col.LABEL, true);
         GFont.drawRight("score", rx + rw - 14, y + 14, 7, Col.LABEL3, false);
-        List<CheckType> checks = new ArrayList<>(List.of(CheckType.values()));
+        // triggered checks first; clean ones collapse into one line when space is short
+        List<CheckType> checks = new ArrayList<>(), clean = new ArrayList<>();
+        for (CheckType c : CheckType.values()) (an.flagCount(c) > 0 ? checks : clean).add(c);
         checks.sort((a, b) -> Float.compare(an.checkScore(b), an.checkScore(a)));
-        float rowH = Math.min(30, (h - 36) / checks.size());
+        float avail = h - 40;
+        boolean summary = false;
+        if ((checks.size() + clean.size()) * 17 <= avail) checks.addAll(clean);
+        else summary = !clean.isEmpty();
+        float rowH = Math.min(30, avail / Math.max(1, checks.size() + (summary ? 1 : 0)));
+        if (summary) {
+            float yy = y + 32 + checks.size() * rowH;
+            Glass.dot(rx + 20, yy + rowH / 2 - 1, 7, Col.a(Col.GREEN, 0.9f));
+            Glass.line(rx + 17, yy + rowH / 2 - 1, rx + 19.5f, yy + rowH / 2 + 1.5f, 1.4f, 0xFFFFFFFF);
+            Glass.line(rx + 19.5f, yy + rowH / 2 + 1.5f, rx + 23.5f, yy + rowH / 2 - 3.5f, 1.4f, 0xFFFFFFFF);
+            GFont.draw(clean.size() + " more checks clean", rx + 33, yy + rowH / 2 - 4.5f, 8, Col.LABEL2, true);
+        }
         for (int i = 0; i < checks.size(); i++) {
             CheckType c = checks.get(i);
             float yy = y + 32 + i * rowH;

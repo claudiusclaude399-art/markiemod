@@ -157,6 +157,7 @@ final class CounterLab extends Scene3D {
             case AUTO_TOTEM -> totem();
             case CRYSTAL_AURA -> crystals();
             case WALL_HIT -> walls();
+            default -> general();
         }
         Glass.alpha = old;
         Glass.ctx().disableScissor();

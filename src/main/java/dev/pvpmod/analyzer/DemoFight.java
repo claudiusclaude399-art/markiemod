@@ -41,10 +41,12 @@ public final class DemoFight {
 
             // them: drift towards the centre, speed burst late in the fight
             if (t >= 1020 && t < 1060) opSpeedBoost = 0.72; else opSpeedBoost = 0;
-            ox += Math.cos(t / 70.0) * 0.03 + opSpeedBoost + kbx;
+            // no slowdown: runs while eating (1100..1190)
+            double noSlow = t >= 1100 && t < 1190 ? 0.2 : 0;
+            ox += Math.cos(t / 70.0) * 0.03 + opSpeedBoost + kbx + noSlow;
             oz += Math.sin(t / 60.0) * 0.03 + kbz;
             kbx *= 0.55; kbz *= 0.55;
-            if (opSpeedBoost == 0 && Math.abs(ox) > 6) ox *= 0.97;
+            if (opSpeedBoost == 0 && noSlow == 0 && Math.abs(ox) > 6) ox *= 0.97;
 
             PState op = new PState();
             op.x = ox; op.z = oz; op.y = 64;
@@ -76,6 +78,10 @@ public final class DemoFight {
 
             // totem in the offhand, refilled one tick after each pop
             op.m = "netherite_sword";
+            // fast eat: a golden apple in 0.8 s, then eats again while sprinting
+            if (t >= 1095) op.m = "golden_apple";
+            if ((t >= 1100 && t < 1116) || (t >= 1130 && t < 1190)) op.f |= PState.USING;
+            op.ab = t >= 1118 ? 4 : 0;
             op.o = opHasTotem ? "totem_of_undying" : "";
             me.m = "netherite_sword";
             me.o = "totem_of_undying";
@@ -89,12 +95,13 @@ public final class DemoFight {
             if ((t - lastHitMe >= 11 && dist < (cheatReach ? 4.2 : 3.0) && (t < 985 || t > 1075) && rnd.nextFloat() < 0.45f) || noLook) {
                 lastHitMe = t;
                 FightEvent e = new FightEvent(t, FightEvent.Kind.HIT_ME).at(op.x, op.y, op.z);
+                if (t >= 680 && t < 800) e.d = 1;   // "critical" hits while standing on the ground (criticals cheat)
                 r.events.add(e);
                 meHp -= 1.3f;
                 if (meHp < 4) meHp = 4;
             }
             // my hits on them; with anti-knockback (450..800) they don't move back
-            if (t - lastHitOp >= 13 && dist < 3.0 && (t < 985 || t > 1075) && rnd.nextFloat() < 0.35f) {
+            if (t - lastHitOp >= 13 && dist < 3.0 && (t < 985 || t > 1075) && t < 1095 && rnd.nextFloat() < 0.35f) {
                 lastHitOp = t;
                 r.events.add(new FightEvent(t, FightEvent.Kind.HIT_OP).at(op.x, op.y, op.z));
                 opHp -= 1.6f;

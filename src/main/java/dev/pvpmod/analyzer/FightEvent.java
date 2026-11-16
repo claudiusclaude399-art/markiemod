@@ -3,7 +3,7 @@ package dev.pvpmod.analyzer;
 /** Something that happened during a fight (a hit, a totem pop, a crystal...). */
 public class FightEvent {
     public enum Kind {
-        HIT_ME,        // opponent melee-hit me. b = no line of sight
+        HIT_ME,        // opponent melee-hit me. b = no line of sight, d = 1 for a critical hit
         HIT_OP,        // I melee-hit the opponent. b = wall/hole behind them (no knockback possible)
         BLAST_ME,      // explosion / other damage to me caused by the opponent
         BLAST_OP,

@@ -23,7 +23,21 @@ public enum CheckType {
     CRYSTAL_AURA("Crystal aura", "X", Col.PURPLE, 0.8f,
         "Placed and broke end crystals at inhuman speed, or placed them without looking."),
     WALL_HIT("Through walls", "W", Col.BLUE, 0.5f,
-        "Hit you with solid blocks between their eyes and your hitbox.");
+        "Hit you with solid blocks between their eyes and your hitbox."),
+    CRITICALS("Criticals", "!", Col.ORANGE, 0.8f,
+        "Landed critical hits on you without jumping or falling (critical hits need them to be falling)."),
+    NOSLOW("No slowdown", "N", Col.MINT, 0.8f,
+        "Kept moving fast while eating, drinking, blocking or drawing a bow, which slows everyone down to a walk."),
+    FAST_EAT("Fast eat", "E", Col.GREEN, 0.8f,
+        "Finished a golden apple much faster than the 1.6 seconds eating takes."),
+    HITBOX("Hitboxes", "H", Col.INDIGO, 0.5f,
+        "Kept landing hits while aiming beside your hitbox, as if it were bigger than it is."),
+    STEP("Step", "P", Col.TEAL, 0.6f,
+        "Climbed full blocks instantly without jumping (normal step-up is only half a block)."),
+    JESUS("Water walk", "J", Col.BLUE, 0.8f,
+        "Walked on top of water with nothing holding them up."),
+    BLINK("Blink", "B", Col.PINK, 0.7f,
+        "Hit you while their movement was frozen, then teleported ahead: holding back their movement packets.");
 
     public final String title, letter, description;
     public final int color;

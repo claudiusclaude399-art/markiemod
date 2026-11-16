@@ -128,6 +128,8 @@ public final class Analyzer {
     // ------------------------------------------------------------------ lag & ping
     private final BitSet lag = new BitSet();
     private int stall = 0;
+    /** Freezes that ended in a jump forward: {first frozen tick, resume tick, jump*100}. */
+    private final List<int[]> blinkWindows = new ArrayList<>();
 
     /** Watches their position stream for freezes followed by jumps (lag spikes / packet loss). */
     private void observe(int i) {
@@ -144,7 +146,14 @@ public final class Analyzer {
         } else {
             if (stall >= 3 && p != null) {
                 double dx = o.x - p.x, dy = o.y - p.y, dz = o.z - p.z;
-                if (Math.sqrt(dx * dx + dy * dy + dz * dz) > 0.45) markLag(i - stall - 5, i + 15);
+                double jump = Math.sqrt(dx * dx + dy * dy + dz * dz);
+                if (jump > 0.45) markLag(i - stall - 5, i + 15);
+                // they were moving, froze, then jumped ahead: a candidate for blink / lag switch
+                PState before = op(i - stall - 1), before5 = op(i - stall - 6);
+                if (stall >= 6 && jump > 1.0 && before != null && before5 != null
+                    && Math.hypot(before.x - before5.x, before.z - before5.z) > 0.5) {
+                    blinkWindows.add(new int[]{i - stall, i, (int) Math.round(jump * 100)});
+                }
             }
             stall = 0;
         }
@@ -220,6 +229,9 @@ public final class Analyzer {
         tickAim(t, f, op);
         tickSpeed(t, op);
         tickFlight(t, op);
+        tickItemUse(t, op);
+        tickStep(t, op);
+        tickWater(t, op);
         resolveVelocity(t);
         resolveSnaps(t);
         sus.add(score());
@@ -239,7 +251,8 @@ public final class Analyzer {
 
     // ------------------------------------------------------------------ events
     private final List<int[]> pops = new ArrayList<>();          // {tick}
-    private int fastRefills = 0, noLookHits = 0;
+    private int fastRefills = 0, noLookHits = 0, blinkHits = 0, fakeCrits = 0;
+    private final List<Double> hitErrors = new ArrayList<>();
     private final ArrayDeque<double[]> crystalWindow = new ArrayDeque<>();   // {tick, reactionMs}
     private final List<Object[]> velocityPending = new ArrayList<>();
     private int kbChecked = 0, kbMissing = 0;
@@ -322,6 +335,59 @@ public final class Analyzer {
         }
 
         if (e.b && !lagged) flag(t, CheckType.WALL_HIT, 0.3f * pf, 0, "Hit you with solid blocks in the way", op, 10);
+
+        // blink: the hit arrived while their movement was frozen, and they jumped ahead afterwards
+        for (int[] bw : blinkWindows) {
+            // hits that arrive together with the catch-up burst are normal lag; only hits during the freeze count
+            if (t > bw[0] + 3 && t < bw[1] - 1) {
+                blinkHits++;
+                flag(t, CheckType.BLINK, (blinkHits >= 2 ? 0.7f : 0.4f) * pf, bw[2] / 100.0,
+                    String.format("Hit you while frozen for %.1f s, then jumped %.1f blocks ahead", (bw[1] - bw[0]) / 20.0, bw[2] / 100.0), op, 20);
+                break;
+            }
+        }
+
+        // criticals: a critical hit needs them to be falling, so their height must have changed
+        if (e.d == 1 && !lagged && !op.has(PState.CLIMB | PState.FLUID | PState.VEHICLE)) {
+            double lo = 1e9, hi = -1e9;
+            for (int j = Math.max(0, t - 12); j <= t; j++) {
+                PState o = op(j);
+                if (o != null) { lo = Math.min(lo, o.y); hi = Math.max(hi, o.y); }
+            }
+            if (hi - lo < 0.2 / sens) {
+                fakeCrits++;
+                flag(t, CheckType.CRITICALS, (fakeCrits >= 3 ? 0.75f : 0.35f) * pf, hi - lo,
+                    String.format("Critical hit with no jump or fall (moved %.2f blocks up/down)", hi - lo), op, 0);
+            }
+        }
+
+        // hitboxes: hits that keep landing while they aim beside you
+        if (!lagged && best >= 2.0 && best < 50 && minErr < 60) {
+            // where you were on their screen when they clicked: both pings back, give or take 2 ticks of jitter
+            Frame fh = fr(t);
+            int lagT = clamp(Math.round((fh.mp + fh.opg) / 50f) + 2, 0, 14);
+            double err = 180;
+            for (int j = Math.max(0, t - 2); j <= t; j++) {
+                PState o = op(j);
+                if (o == null) continue;
+                for (int d = -2; d <= 2; d++) {
+                    PState m = me(t - lagT + d);
+                    if (m != null) err = Math.min(err, aimError(o, m));
+                }
+            }
+            hitErrors.add(err);
+            if (hitErrors.size() >= 10) {
+                List<Double> sorted = new ArrayList<>(hitErrors);
+                sorted.sort(Double::compare);
+                double median = sorted.get(sorted.size() / 2);
+                long off = hitErrors.stream().filter(v -> v > 3.0).count();
+                double frac = off / (double) hitErrors.size();
+                if (frac >= 0.6 && median >= 3.5 * sens) {
+                    flag(t, CheckType.HITBOX, 0.45f * pf, median,
+                        String.format("Aimed %.0f\u00B0 beside your hitbox on %d of %d hits and still hit", median, off, hitErrors.size()), op, 400);
+                }
+            }
+        }
     }
 
     private void onRefill(int t, FightEvent e) {
@@ -562,6 +628,71 @@ public final class Analyzer {
             flag(t, CheckType.FLIGHT, sev, airRun / 20.0,
                 String.format("In the air %.1f s with no gravity (%s %.2f blocks)", airRun / 20.0,
                     op.y >= a.y ? "rose" : "fell", Math.abs(op.y - a.y)), op, 40);
+        }
+    }
+
+    // ------------------------------------------------------------------ item use, step, water
+    private int useRun = 0, eatStart = -1, eatEnd = -1, waterRun = 0;
+    private float absBefore = 0;
+
+    private static boolean gapple(String id) { return id != null && id.endsWith("golden_apple"); }
+
+    private void tickItemUse(int t, PState op) {
+        // no slowdown: using an item drops everyone to a walk (~1.3 b/s)
+        boolean using = op != null && op.has(PState.USING) && op.has(PState.GROUND)
+            && !op.has(PState.FLUID | PState.SLIPPERY | PState.GLIDE | PState.VEHICLE | PState.CREATIVE)
+            && !"trident".equals(op.m) && !"trident".equals(op.o)
+            && !laggy(t - 10, t + 5) && t - opHurtTick >= 20 && t - opLaunchTick >= 20 && t - opTeleportTick >= 20;
+        useRun = using ? useRun + 1 : 0;
+        if (useRun >= 12) {
+            PState b = op(t - 10);
+            if (b != null) {
+                double avg = Math.hypot(op.x - b.x, op.z - b.z) / 10;
+                if (avg > 0.15 * sens) {
+                    flag(t, CheckType.NOSLOW, avg > 0.22 ? 0.7f : 0.45f, avg * 20,
+                        String.format("Moving %.1f b/s while using an item (using slows you to ~1.3)", avg * 20), op, 60);
+                }
+            }
+        }
+
+        // fast eat: a golden apple takes 32 ticks; absorption shows the moment it was eaten
+        boolean eating = op != null && op.has(PState.USING) && (gapple(op.m) || gapple(op.o));
+        if (eating && eatStart < 0) { eatStart = t; absBefore = op.ab; eatEnd = -1; }
+        if (!eating && eatStart >= 0 && eatEnd < 0) eatEnd = t;
+        if (eatEnd >= 0) {
+            if (op != null && op.ab - absBefore >= 3.5f) {
+                int len = eatEnd - eatStart;
+                if (len < 25 / sens && !laggy(eatStart - 5, t + 5)) {
+                    flag(t, CheckType.FAST_EAT, len < 18 ? 0.7f : 0.5f, len / 20.0,
+                        String.format("Ate a golden apple in %.1f s (eating takes 1.6 s)", len / 20.0), op, 0);
+                }
+                eatStart = -1; eatEnd = -1;
+            } else if (t - eatEnd > 8) {
+                eatStart = -1; eatEnd = -1;
+            }
+        }
+    }
+
+    private void tickStep(int t, PState op) {
+        PState a = op(t - 2), m = op(t - 1);
+        if (op == null || a == null || m == null || laggy(t - 5, t + 5)) return;
+        if (!op.has(PState.GROUND) || !a.has(PState.GROUND) || !m.has(PState.GROUND)) return;   // a jump leaves the ground
+        if (op.has(PState.CLIMB | PState.FLUID | PState.VEHICLE | PState.GLIDE | PState.SLIPPERY | PState.CREATIVE)) return;
+        if (t - opHurtTick < 20 || t - opLaunchTick < 20 || t - opTeleportTick < 20) return;
+        double dy = op.y - a.y, dh = Math.hypot(op.x - a.x, op.z - a.z);
+        if (dy >= 0.95 * sens && dy < 3 && dh > 0.05) {
+            flag(t, CheckType.STEP, 0.35f, dy, String.format("Stepped up %.1f blocks in 0.1 s without jumping (normal step is 0.6)", dy), op, 20);
+        }
+    }
+
+    private void tickWater(int t, PState op) {
+        boolean on = op != null && op.has(PState.WATER_BELOW) && !laggy(t - 5, t + 5)
+            && !op.has(PState.FLUID | PState.VEHICLE | PState.GLIDE | PState.SUPPORTED | PState.CREATIVE);
+        PState a = op(t - 2);
+        if (on && a != null && Math.abs(op.y - a.y) < 0.05 && Math.hypot(op.x - a.x, op.z - a.z) >= 0.12) waterRun++;
+        else if (!on) waterRun = 0;
+        if (waterRun >= 20) {
+            flag(t, CheckType.JESUS, 0.6f, waterRun / 20.0, String.format("Walked on top of water for %.1f s", waterRun / 20.0), op, 60);
         }
     }
 

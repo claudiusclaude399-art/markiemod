@@ -65,6 +65,8 @@ public final class FightTracker {
     private static final Map<UUID, ArrayDeque<PState>> history = new HashMap<>();
     private static ClientWorld lastWorld;
     private static String groupId = "";
+    /** A critical-hit animation landed on you this tick (matched to the hit that caused it). */
+    private static boolean critOnMe = false;
 
     public static final class Live {
         public final FightRecord rec = new FightRecord();
@@ -157,6 +159,11 @@ public final class FightTracker {
 
     public static void onAnimation(EntityAnimationS2CPacket p) {
         int a = p.getAnimationId();
+        MinecraftClient mc = MinecraftClient.getInstance();
+        if (a == EntityAnimationS2CPacket.CRIT && mc.player != null && p.getEntityId() == mc.player.getId()) {
+            critOnMe = true;
+            return;
+        }
         if (a != EntityAnimationS2CPacket.SWING_MAIN_HAND && a != EntityAnimationS2CPacket.SWING_OFF_HAND) return;
         Live l = byEntity(p.getEntityId());
         if (l != null) l.pendingSwings++;
@@ -319,6 +326,14 @@ public final class FightTracker {
         }
 
         boolean meDead = me.isDead() || me.getHealth() <= 0;
+        if (critOnMe) {
+            // the crit animation follows the damage packet in the same tick: mark that hit as critical
+            outer:
+            for (Live l : lives.values()) {
+                for (FightEvent e : l.pending) if (e.k == FightEvent.Kind.HIT_ME && e.d == 0) { e.d = 1; break outer; }
+            }
+            critOnMe = false;
+        }
         for (Live l : new ArrayList<>(lives.values())) {
             Frame f = new Frame(l.t, meNow, now.get(l.opUuid), ping(mc, me.getUuid()), ping(mc, l.opUuid));
             if (!l.rec.others.isEmpty()) {
@@ -474,6 +489,10 @@ public final class FightTracker {
         if (p.isGliding()) f |= PState.GLIDE;
         if (p.isTouchingWater() || p.isInLava() || inSlowBlock(world, p)) f |= PState.FLUID;
         if (onSlipperyBlock(world, p)) f |= PState.SLIPPERY;
+        if (remote && !p.isTouchingWater()) {
+            BlockPos below = BlockPos.ofFloored(pos.x, pos.y - 0.2, pos.z);
+            if (world.getFluidState(below).isIn(net.minecraft.registry.tag.FluidTags.WATER)) f |= PState.WATER_BELOW;
+        }
         if (p.isClimbing()) f |= PState.CLIMB;
         if (p.isUsingItem()) f |= PState.USING;
         if (p.hasVehicle()) f |= PState.VEHICLE;

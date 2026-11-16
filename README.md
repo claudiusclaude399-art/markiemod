@@ -79,6 +79,16 @@ Checks (all done from what your client can see; nothing is sent to the server):
 | Auto totem | A new totem in hand faster than human reaction time after a pop, after taking away their ping |
 | Crystal aura | 30+ crystals in 5 s broken as soon as their ping allows, or placed without looking |
 | Through walls | Hits with blocks in the way of every spot they could have seen you |
+| Criticals | Critical hits on you while they never jumped or fell (packet crits) |
+| No slowdown | Moving 3+ blocks/s for over half a second while eating, drinking, blocking or drawing a bow |
+| Fast eat | A golden apple finished in under 1.25 s (normal 1.6 s), timed from the start of eating to the absorption hearts |
+| Hitboxes | On most of 10+ hits, aiming beside your hitbox (allowing for where you were during their ping) and still hitting |
+| Step | Climbing a full block in 2 ticks while staying on the ground (normal step-up is 0.6) |
+| Water walk | Walking on top of water for a second with nothing under them (lily pads, boats and frost walker don't count) |
+| Blink | Hits landing while their movement was frozen, then a jump ahead (hits that arrive with the lag catch-up don't count) |
+
+All 17 checks are tested against 40 simulated legit fights (40-500 ms ping, lag spikes, drag clicking, netherite
+W-tapping, legit crits, eating, half-block steps): none of them flag.
 
 How it avoids false flags, especially with laggy opponents:
 
