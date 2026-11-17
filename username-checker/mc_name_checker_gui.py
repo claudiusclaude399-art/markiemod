@@ -38,6 +38,9 @@ WIN_LOCKED_BG = "#FFF4CE"       # Windows "warning" yellow background
 
 MAX_LOG_LINES = 3000
 
+PACING_SMOOTH = "Smooth - stay under Mojang's limit"
+PACING_MAX = "Max - push the limit, longer pauses"
+
 STATUS_TEXT = {history.TAKEN: "taken", history.FREE: "AVAILABLE",
                history.BLOCKED: "LOCKED - blocked", history.HELD: "LOCKED - on hold"}
 STATUS_TAG = {history.TAKEN: "taken", history.FREE: "free",
@@ -424,6 +427,11 @@ class App:
         self.sp_threads.grid(row=0, column=1, sticky="w", padx=(6, 0))
         ttk.Checkbutton(o, text="Show taken names", variable=self.v_show_taken
                         ).grid(row=0, column=2, sticky="w", padx=(16, 0))
+        self.v_pacing = tk.StringVar(value=PACING_SMOOTH)
+        ttk.Label(o, text="Pacing:").grid(row=1, column=0, sticky="w", pady=(2, 0))
+        ttk.Combobox(o, textvariable=self.v_pacing, state="readonly", width=34,
+                     values=(PACING_SMOOTH, PACING_MAX)
+                     ).grid(row=1, column=1, columnspan=2, sticky="w", padx=(6, 0), pady=(2, 0))
 
         # --- short-name alerts
         a = ttk.LabelFrame(top, text=" Short-name alerts ", padding=(12, 4))
@@ -718,6 +726,7 @@ class App:
                 names, lambda batch: skip_db.recently_checked(batch, since))
         self.checker = core.Checker(
             names, threads=self._int(self.v_threads, 12), charset=cs,
+            smooth=self.v_pacing.get() != PACING_MAX,
             on_result=lambda n, a: self.events.put(("result", n, a)),
             on_status=lambda s: self.events.put(("status", s)),
         )
