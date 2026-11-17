@@ -7,3 +7,4 @@ dist/
 *.spec
 checked_names.db*
 screenshot*.png
+settings.json

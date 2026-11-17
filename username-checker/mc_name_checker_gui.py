@@ -16,8 +16,11 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 import tkinter.font as tkfont
 
+import json
+
 import checker_core as core
 import history
+import notify
 
 APP_NAME = "Minecraft Username Checker"
 
@@ -51,6 +54,27 @@ def app_dir():
     if getattr(sys, "frozen", False):
         return os.path.dirname(sys.executable)
     return os.path.dirname(os.path.abspath(__file__))
+
+
+def settings_path():
+    return os.path.join(app_dir(), "settings.json")
+
+
+def load_settings():
+    try:
+        with open(settings_path(), encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def save_settings(data):
+    try:
+        with open(settings_path(), "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+    except OSError:
+        pass
 
 
 def resource(name):
@@ -163,6 +187,12 @@ class App:
         self.history = history.History(self.db_path)
 
         self.alert_hits = []            # short names shown in the banner
+        self.alert_verified = {}        # name -> True (lock-checked free) / False (not checked)
+        self.pending_discord = []
+        self.last_discord = 0.0
+        self.discord_dialog = None
+        self.settings = load_settings()
+        self.webhook = self.settings.get("discord_webhook") or None
         self.token = None               # Minecraft access token (memory only, never saved)
         self.token_owner = None
         self.lock_checker = None
@@ -377,21 +407,37 @@ class App:
         a = ttk.LabelFrame(top, text=" Short-name alerts ", padding=(12, 4))
         a.grid(row=1, column=1, sticky="nsew", pady=(6, 0))
         self.v_alert_on = tk.BooleanVar(value=True)
+        self.v_alert_mode = tk.StringVar(value="up to")
         self.v_alert_len = tk.IntVar(value=3)
+        self.v_alert_unlocked = tk.BooleanVar(value=False)
         self.v_alert_notify = tk.BooleanVar(value=True)
         self.v_alert_stop = tk.BooleanVar(value=False)
+        self.v_discord = tk.BooleanVar(value=bool(self.webhook) and self.settings.get("discord_on", True))
+        self.v_everyone = tk.BooleanVar(value=bool(self.settings.get("discord_everyone", False)))
+        a.columnconfigure(1, weight=1)
         af = ttk.Frame(a)
-        af.grid(row=0, column=0, sticky="w")
-        ttk.Checkbutton(af, text="Alert for free names up to", variable=self.v_alert_on
+        af.grid(row=0, column=0, columnspan=2, sticky="w")
+        ttk.Checkbutton(af, text="Alert for free names", variable=self.v_alert_on
                         ).pack(side="left")
+        ttk.Combobox(af, textvariable=self.v_alert_mode, values=("up to", "exactly"),
+                     state="readonly", width=7).pack(side="left", padx=(4, 0))
         self.sp_alert = ttk.Spinbox(af, from_=core.MIN_LEN, to=core.MAX_LEN, width=3,
                                     textvariable=self.v_alert_len)
         self.sp_alert.pack(side="left", padx=4)
         ttk.Label(af, text="letters").pack(side="left")
-        ttk.Checkbutton(a, text="Windows notification + sound", variable=self.v_alert_notify
+        ttk.Checkbutton(a, text="Only unlocked names", variable=self.v_alert_unlocked,
+                        command=self._only_unlocked_toggled
                         ).grid(row=1, column=0, sticky="w", padx=(20, 0), pady=1)
-        ttk.Checkbutton(a, text="Stop searching when one is found", variable=self.v_alert_stop
+        ttk.Checkbutton(a, text="Stop when found", variable=self.v_alert_stop
+                        ).grid(row=1, column=1, sticky="w", padx=(12, 0), pady=1)
+        ttk.Checkbutton(a, text="Notification + sound", variable=self.v_alert_notify
                         ).grid(row=2, column=0, sticky="w", padx=(20, 0), pady=1)
+        df = ttk.Frame(a)
+        df.grid(row=2, column=1, sticky="w", padx=(12, 0))
+        ttk.Checkbutton(df, text="Discord", variable=self.v_discord, command=self._discord_toggled
+                        ).pack(side="left")
+        ttk.Button(df, text="Webhook...", command=self.open_discord, padding=(4, 0)
+                   ).pack(side="left", padx=(4, 0))
 
         # --- locked names
         k = ttk.LabelFrame(top, text=" Locked names ", padding=(12, 4))
@@ -735,6 +781,8 @@ class App:
             self.pending_toast.extend(names)
             play_alert_sound(self.root)
             flash_taskbar(self.root)
+        if self.v_discord.get() and self.webhook:
+            self.pending_discord.extend(names)
         if self.v_alert_stop.get() and self.checker and self.checker.is_running():
             self.stopped_by_alert = names[0]
             self.stop()
@@ -752,6 +800,59 @@ class App:
             title = f"{len(names)} short names available!"
             body = ", ".join(names[:10]) + (" ..." if len(names) > 10 else "")
         threading.Thread(target=windows_toast, args=(title, body), daemon=True).start()
+
+    def _flush_discord(self):
+        """At most one Discord message every 5 seconds (several finds are combined)."""
+        if not self.pending_discord or time.monotonic() - self.last_discord < 5:
+            return
+        names = self.pending_discord
+        self.pending_discord = []
+        self.last_discord = time.monotonic()
+        verified = {n: self.alert_verified[n] for n in names if n in self.alert_verified}
+        payload = notify.build_message(names, verified, everyone=self.v_everyone.get())
+        url, events = self.webhook, self.events
+
+        def work():
+            ok, msg = notify.send(url, payload)
+            events.put(("discord_result", ok, msg, len(names)))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    # ------------------------------------------------------------------ discord
+    def _discord_toggled(self):
+        if self.v_discord.get() and not self.webhook:
+            self.open_discord()
+            return
+        self._save_discord_settings()
+
+    def open_discord(self):
+        if self.discord_dialog:
+            self.discord_dialog.top.lift()
+            return
+        self.discord_dialog = DiscordDialog(self)
+
+    def _discord_closed(self):
+        self.discord_dialog = None
+        if self.v_discord.get() and not self.webhook:
+            self.v_discord.set(False)
+
+    def set_discord(self, url, everyone):
+        self.webhook = url or None
+        self.v_everyone.set(bool(everyone))
+        self.v_discord.set(bool(url))
+        self._save_discord_settings()
+        self._status("Discord alerts are on" if url else "Discord webhook removed")
+
+    def _save_discord_settings(self):
+        self.settings.update(discord_webhook=self.webhook or "",
+                             discord_on=bool(self.v_discord.get()),
+                             discord_everyone=bool(self.v_everyone.get()))
+        save_settings(self.settings)
+
+    def _only_unlocked_toggled(self):
+        if self.v_alert_unlocked.get() and not self.v_lockcheck.get():
+            self.v_lockcheck.set(True)
+            self._lockcheck_toggled()           # opens the login window if needed
 
     def dismiss_banner(self):
         self.alert_hits = []
@@ -779,8 +880,12 @@ class App:
             running = self.checker and self.checker.is_running()
             if running and not (self.lock_checker and self.lock_checker.accepting()):
                 self._start_lock_checker()
-        elif self.lock_checker:
-            self.lock_checker.stop()            # names still waiting show as "lock not checked"
+        else:
+            if self.lock_checker:
+                self.lock_checker.stop()        # names still waiting show as "lock not checked"
+            if self.v_alert_unlocked.get():
+                self._status("'Only unlocked names' is on, so there are no alerts "
+                             "while the locked check is off")
 
     def open_login(self):
         if self.login_dialog:
@@ -792,6 +897,9 @@ class App:
         self.login_dialog = None
         if self.v_lockcheck.get() and not self.token:
             self.v_lockcheck.set(False)
+            if self.v_alert_unlocked.get():
+                self.v_alert_unlocked.set(False)
+                self._status("'Only unlocked names' needs the locked check - log in to use it")
 
     def set_login(self, token, owner):
         self.token, self.token_owner = token, owner
@@ -814,6 +922,8 @@ class App:
         self.v_lockcheck.set(False)
         msg = ("Mojang stopped accepting your login (tokens run out after about a day). "
                "The locked check is off - press Log in... to get a new token.")
+        if self.v_alert_unlocked.get():
+            msg += " Alerts for unlocked names are paused until then."
         self._status(msg)
         self._log(msg, "info")
 
@@ -1000,15 +1110,29 @@ class App:
         lines, new_free, results, alerts = [], [], [], []
         status = None
         show_taken = self.v_show_taken.get()
-        alert_len = self._alert_len() if self.v_alert_on.get() else 0
         lc = self.lock_checker
+        alert_on = self.v_alert_on.get()
+        alert_n = self._alert_len()
+        alert_exact = self.v_alert_mode.get() == "exactly"
+        only_unlocked = self.v_alert_unlocked.get()
 
-        def show_free(name, note=""):
+        def wants_alert(name, lock):
+            if not alert_on:
+                return False
+            if (len(name) != alert_n) if alert_exact else (len(name) > alert_n):
+                return False
+            return lock is True or not only_unlocked
+
+        def show_free(name, lock=None):
+            """lock: None = no locked check this run, True = checked & free, False = not checked."""
+            note = {None: "", True: "  - not locked", False: "  - lock not checked"}[lock]
             new_free.append(name)
             self.n_free += 1
-            if len(name) <= alert_len:
+            if wants_alert(name, lock):
                 alerts.append(name)
-                lines.append((f"{name:<17}AVAILABLE{note}   \u2605 short name!", "alert"))
+                if lock is not None:
+                    self.alert_verified[name] = lock
+                lines.append((f"{name:<17}AVAILABLE{note}   \u2605 alert!", "alert"))
             else:
                 lines.append((f"{name:<17}AVAILABLE{note}", "free"))
 
@@ -1023,7 +1147,7 @@ class App:
                         if lc and lc.accepting():
                             lc.submit(name)                 # shown once the locked check answers
                         else:
-                            show_free(name, "  - lock not checked" if lc else "")
+                            show_free(name, False if lc else None)
                     elif show_taken:
                         lines.append((f"{name:<17}taken", "taken"))
                 elif kind == "lock":
@@ -1033,14 +1157,20 @@ class App:
                         results.append((name, VERDICT_STATUS[verdict]))
                         lines.append((f"{name:<17}LOCKED  - {LOCK_REASON[verdict]}", "locked"))
                     elif verdict == core.CLAIMABLE:
-                        show_free(name, "  - not locked")
+                        show_free(name, True)
                     else:
-                        show_free(name, "  - lock not checked")
+                        show_free(name, False)
                 elif kind == "auth_failed":
                     self._auth_failed()
                 elif kind == "login_result":
                     if self.login_dialog:
                         self.login_dialog.tested(*ev[1:])
+                elif kind == "discord_result":
+                    _, ok, msg, n = ev
+                    status = (f"Sent {n} name(s) to Discord" if ok else f"Discord: {msg}")
+                elif kind == "discord_test":
+                    if self.discord_dialog:
+                        self.discord_dialog.tested(*ev[1:])
                 elif kind == "status":
                     status = ev[1]
                 elif kind == "search":
@@ -1078,6 +1208,7 @@ class App:
         if alerts:
             self._handle_alerts(alerts)
         self._flush_toast()
+        self._flush_discord()
 
         c = self.checker
         if c:
@@ -1300,6 +1431,134 @@ class LoginDialog:
         except tk.TclError:
             pass
         self.app._login_closed()
+
+
+class DiscordDialog:
+    """Asks for the Discord webhook URL that alerts are posted to."""
+
+    STEPS = (
+        "In Discord, open your server's Server Settings, then Integrations, then Webhooks.",
+        "Click New Webhook and pick the channel the alerts should go to.",
+        "Click Copy Webhook URL and paste it below.",
+    )
+
+    def __init__(self, app):
+        self.app = app
+        top = self.top = tk.Toplevel(app.root)
+        top.title("Discord alerts")
+        top.configure(bg=WIN_BG)
+        top.transient(app.root)
+        top.resizable(False, False)
+        try:
+            top.iconbitmap(resource("icon.ico"))
+        except Exception:
+            pass
+        wrap = 480
+        frm = ttk.Frame(top, padding=18)
+        frm.pack(fill="both", expand=True)
+        ttk.Label(frm, text="Send alerts to Discord", font=(app.font_family, 13)).pack(anchor="w")
+        ttk.Label(frm, wraplength=wrap, justify="left", text=(
+            "The checker posts a message in a Discord channel for every name you'd get an alert "
+            "for - the same names as the Windows notification, using the alert settings in the "
+            "main window.")).pack(anchor="w", pady=(6, 10))
+
+        steps = ttk.LabelFrame(frm, text=" How to get a webhook URL ", padding=(12, 6))
+        steps.pack(fill="x")
+        for i, step in enumerate(self.STEPS, 1):
+            ttk.Label(steps, text=f"{i}.  {step}", wraplength=wrap - 30, justify="left"
+                      ).pack(anchor="w", pady=1)
+
+        row = ttk.Frame(frm)
+        row.pack(fill="x", pady=(12, 2))
+        ttk.Label(row, text="Webhook URL:").pack(side="left")
+        self.v_url = tk.StringVar(value=app.webhook or "")
+        ttk.Entry(row, textvariable=self.v_url, width=44).pack(side="left", padx=6, fill="x",
+                                                               expand=True)
+        ttk.Button(row, text="Paste", command=self.paste, padding=(6, 1)).pack(side="left")
+        self.v_everyone = tk.BooleanVar(value=app.v_everyone.get())
+        ttk.Checkbutton(frm, text="Mention @everyone in alerts", variable=self.v_everyone
+                        ).pack(anchor="w", pady=(4, 0))
+        self.lbl = ttk.Label(frm, text="", wraplength=wrap, justify="left")
+        self.lbl.pack(anchor="w", pady=(6, 0))
+        ttk.Label(frm, style="Hint.TLabel", wraplength=wrap, justify="left", text=(
+            "Anyone who has this URL can post in that channel, so keep it private. It's saved in "
+            "settings.json next to this program so you only paste it once.")
+                  ).pack(anchor="w", pady=(8, 12))
+
+        btns = ttk.Frame(frm)
+        btns.pack(fill="x")
+        self.btn_test = ttk.Button(btns, text="Send test message", command=self.test)
+        self.btn_test.pack(side="left")
+        ttk.Button(btns, text="Close", command=self.close).pack(side="right")
+        if app.webhook:
+            ttk.Button(btns, text="Remove", command=self.remove).pack(side="right", padx=(0, 6))
+        ttk.Button(btns, text="Save", style="Accent.TButton", command=self.save
+                   ).pack(side="right", padx=(0, 6))
+
+        top.bind("<Return>", lambda e: self.save())
+        top.bind("<Escape>", lambda e: self.close())
+        top.protocol("WM_DELETE_WINDOW", self.close)
+        top.update_idletasks()
+        x = app.root.winfo_rootx() + (app.root.winfo_width() - top.winfo_reqwidth()) // 2
+        y = app.root.winfo_rooty() + 40
+        top.geometry(f"+{max(0, x)}+{max(0, y)}")
+        top.grab_set()
+
+    def _url(self):
+        url = self.v_url.get().strip()
+        if not notify.is_webhook_url(url):
+            self.lbl.configure(style="LoginBad.TLabel", text=(
+                "That doesn't look like a Discord webhook URL. It should start with "
+                "https://discord.com/api/webhooks/"))
+            return None
+        return url
+
+    def paste(self):
+        try:
+            self.v_url.set(self.app.root.clipboard_get().strip())
+        except tk.TclError:
+            pass
+
+    def test(self):
+        url = self._url()
+        if not url:
+            return
+        self.btn_test.configure(state="disabled")
+        self.lbl.configure(text="Sending a test message ...", style="TLabel")
+        payload = notify.build_message([], test=True, everyone=self.v_everyone.get())
+        events = self.app.events
+
+        def work():
+            ok, msg = notify.send(url, payload)
+            events.put(("discord_test", ok, msg))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def tested(self, ok, msg):
+        self.btn_test.configure(state="normal")
+        if ok:
+            self.lbl.configure(text="\u2714 Test message sent - check your Discord channel.",
+                               style="LoginOk.TLabel")
+        else:
+            self.lbl.configure(text=msg, style="LoginBad.TLabel")
+
+    def save(self):
+        url = self._url()
+        if url:
+            self.app.set_discord(url, self.v_everyone.get())
+            self.close()
+
+    def remove(self):
+        self.app.set_discord(None, False)
+        self.close()
+
+    def close(self):
+        try:
+            self.top.grab_release()
+            self.top.destroy()
+        except tk.TclError:
+            pass
+        self.app._discord_closed()
 
 
 def main():

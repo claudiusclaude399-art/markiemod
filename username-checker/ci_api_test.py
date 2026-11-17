@@ -2,6 +2,7 @@
 import sys
 
 import checker_core as core
+import notify
 
 KNOWN_TAKEN = ["Notch", "jeb_", "Dinnerbone"]
 SURELY_FREE = ["qzx_9vk2_plw"]     # 12 random chars - nobody has this
@@ -33,5 +34,12 @@ for label, call in (("token_owner", lambda: core.token_owner("not-a-real-token")
     except Exception as e:
         print(f"[{label}] BAD {type(e).__name__}: {e}")
         ok = False
+
+# Discord: a made-up webhook must come back as "doesn't exist", not crash or hang
+fake_hook = "https://discord.com/api/webhooks/1/not-a-real-webhook-token"
+assert notify.is_webhook_url(fake_hook)
+sent, msg = notify.send(fake_hook, notify.build_message(["abc"], {"abc": True}))
+print(f"[discord] {'OK ' if not sent and 'exist' in msg else 'BAD'} {msg}")
+ok &= (not sent and "exist" in msg)
 
 sys.exit(0 if ok else 1)

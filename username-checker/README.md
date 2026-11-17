@@ -21,13 +21,25 @@ Windows may show "Windows protected your PC" because the exe isn't signed: click
 | Parallel requests | how many lookups run at once (default 12) |
 | Show taken names | turn off to only see the green ones |
 
-### Short-name alerts
+### Alerts
 
 | Option | What it does |
 |---|---|
-| Alert for free names up to **3** letters | highlights them and shows a green bar at the top (change 3 to any length) |
-| Windows notification + sound | a Windows notification pops up, it plays a sound and the taskbar button blinks |
-| Stop searching when one is found | stops as soon as one turns up, so you can go claim it |
+| Alert for free names **up to / exactly** **3** letters | e.g. "exactly 3" alerts only for 3-letter names, "up to 4" for 3- and 4-letter ones. Hits get a green bar at the top and are highlighted |
+| Only unlocked names | only alert for names the locked check (below) confirmed are really free - needs the Minecraft login |
+| Stop when found | stops searching as soon as an alert fires, so you can go claim the name |
+| Notification + sound | a Windows notification pops up, it plays a sound and the taskbar button blinks |
+| Discord | posts each alert to a Discord channel - see below |
+
+### Discord alerts
+
+1. In Discord: **Server Settings -> Integrations -> Webhooks -> New Webhook**, pick a channel, **Copy Webhook URL**.
+2. In the checker: tick **Discord** (or press **Webhook...**), paste the URL, press **Send test message**, then **Save**.
+
+Every alert is then also posted to that channel (several finds within a few seconds are combined into one
+message), with each name's length and whether the locked check confirmed it. Tick **Mention @everyone** to ping
+the channel. The URL is saved in `settings.json` next to the program - keep it private, anyone with it can post
+in that channel.
 
 ### Locked names (yellow)
 
