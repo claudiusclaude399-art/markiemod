@@ -226,6 +226,9 @@ class Endpoint:
         self.next_slot = 0.0
         self.cooldown_until = 0.0
         self.strikes = 0            # consecutive 429s
+        self.smooth = True          # learn Mojang's limit and stay under it
+        self.ceiling = max_rate     # highest rate that hasn't been rate-limited (smooth mode)
+        self.streak = 0             # successes since the last 429
         self.errors = 0             # consecutive other failures
         self.lock = threading.Lock()
 
@@ -243,7 +246,14 @@ class Endpoint:
         with self.lock:
             self.strikes = 0
             self.errors = 0
-            self.rate = min(self.max_rate, self.rate + 1.0 / self.rate)   # ~ +1 req/s each second
+            self.streak += 1
+            if self.smooth:
+                # creep back up very slowly in case the limit was lifted
+                if self.streak % 20 == 0:
+                    self.ceiling = min(self.max_rate, self.ceiling * 1.05)
+                self.rate = min(self.ceiling, self.rate + 1.0 / self.rate)
+            else:
+                self.rate = min(self.max_rate, self.rate + 1.0 / self.rate)   # ~ +1 req/s per second
 
     def rate_limited(self):
         with self.lock:
@@ -252,8 +262,15 @@ class Endpoint:
                 # a request that was already on its way when we paused - same strike
                 return round(self.cooldown_until - now, 1)
             self.strikes += 1
-            self.rate = max(0.5, self.rate * 0.7)               # back off
-            wait = min(0.5 * 2 ** (self.strikes - 1), 120)      # 0.5, 1, 2 ... 120 s
+            if self.smooth:
+                # remember where the limit is and settle just below it
+                self.ceiling = max(0.5, self.rate * 0.9)
+                self.rate = self.ceiling
+                wait = min(0.5 * 2 ** (self.strikes - 1), 10)   # 0.5, 1, 2 ... 10 s - short pauses
+            else:
+                self.rate = max(0.5, self.rate * 0.7)           # back off
+                wait = min(0.5 * 2 ** (self.strikes - 1), 120)  # 0.5, 1, 2 ... 120 s
+            self.streak = 0
             self.cooldown_until = now + wait
             self.next_slot = self.cooldown_until
             return wait
@@ -579,12 +596,14 @@ class Checker:
     """
 
     def __init__(self, names, threads=8, on_result=None, on_status=None,
-                 endpoints=None, charset=None):
+                 endpoints=None, charset=None, smooth=True):
         self._names = iter(names)
         self.threads = max(1, int(threads))
         self.on_result = on_result or (lambda n, a: None)
         self.on_status = on_status or (lambda s: None)
         self.endpoints = endpoints or default_endpoints()
+        for ep in self.endpoints:
+            ep.smooth = smooth
         self.charset = charset or (LETTERS + DIGITS + UNDERSCORE)
 
         self._lock = threading.Lock()
