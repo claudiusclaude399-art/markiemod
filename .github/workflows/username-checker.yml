@@ -1,0 +1,61 @@
+name: username checker exe
+
+on:
+  push:
+    paths:
+      - "username-checker/**"
+      - ".github/workflows/username-checker.yml"
+  workflow_dispatch:
+
+jobs:
+  exe:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: username-checker
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install pyinstaller pillow
+
+      - name: Test real Mojang lookups
+        continue-on-error: true
+        run: python ci_api_test.py
+
+      - name: Build exe
+        run: >
+          pyinstaller --noconfirm --onefile --windowed
+          --name MinecraftUsernameChecker
+          --icon icon.ico --add-data "icon.ico;."
+          mc_name_checker_gui.py
+
+      - name: Run the exe for 20 seconds (real check of 4-letter names)
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath dist\MinecraftUsernameChecker.exe -ArgumentList "--selftest" -PassThru
+          if (-not $p.WaitForExit(90000)) { $p.Kill(); throw "exe did not finish" }
+          if (-not (Test-Path dist\selftest.txt)) { throw "exe did not start properly" }
+          Get-Content dist\selftest.txt
+
+      - name: Screenshot of the window
+        shell: pwsh
+        run: |
+          python mc_name_checker_gui.py --selftest
+          Get-Content selftest.txt
+          python -c "from PIL import Image; import base64,io; im=Image.open('screenshot.png').convert('RGB'); b=io.BytesIO(); im.save(b,'JPEG',quality=70); print('SCREENSHOT_B64:'+base64.b64encode(b.getvalue()).decode())"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MinecraftUsernameChecker-exe
+          path: username-checker/dist/MinecraftUsernameChecker.exe
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: screenshot
+          path: username-checker/screenshot.png
+          if-no-files-found: ignore

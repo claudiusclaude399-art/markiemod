@@ -1,0 +1,7 @@
+__pycache__/
+available.txt
+selftest.txt
+screenshot.png
+build/
+dist/
+*.spec
