@@ -33,38 +33,149 @@ USER_AGENT = "mc-name-checker/2.0"
 
 # --------------------------------------------------------------------------- names
 
+# How underscores may appear (only matters when "_" is in the character set)
+UNDERSCORE_MODES = {
+    "none": "None",
+    "anywhere": "Anywhere",
+    "max1": "At most 1, not at start/end",
+    "one": "Exactly 1, not at start/end",
+}
+
+
 def build_charset(letters=True, digits=True, underscore=False):
+    """underscore: True/False, or an UNDERSCORE_MODES key ("none" = no underscores)."""
     cs = ""
     if letters:
         cs += LETTERS
     if digits:
         cs += DIGITS
-    if underscore:
+    if underscore and underscore != "none":
         cs += UNDERSCORE
     return cs
 
 
-def count_names(min_len, max_len, charset):
-    return sum(len(charset) ** n for n in range(min_len, max_len + 1))
+def name_allowed(name, mode="anywhere"):
+    """Does `name` follow the underscore rule?"""
+    if mode == "anywhere" or "_" not in name and mode != "one":
+        return True
+    if mode == "none":
+        return False
+    if name[0] == "_" or name[-1] == "_":
+        return False
+    u = name.count("_")
+    return u == 1 if mode == "one" else u <= 1
 
 
-def generate_names(min_len, max_len, charset, start=None, shuffle=False):
-    """Yield every name with a length in [min_len, max_len] built from charset."""
+def _per_length(n, charset, mode):
+    k = len(charset.replace("_", ""))
+    if "_" not in charset or mode == "none":
+        return k ** n
+    if mode == "anywhere":
+        return (k + 1) ** n
+    with_one = (n - 2) * k ** (n - 1) if n >= 3 else 0
+    return with_one + (k ** n if mode == "max1" else 0)
+
+
+def count_names(min_len, max_len, charset, mode="anywhere"):
+    return sum(_per_length(n, charset, mode) for n in range(min_len, max_len + 1))
+
+
+def _completions(prefix, n, charset, mode):
+    """How many allowed names of length n start with `prefix`."""
+    k = len(charset.replace("_", ""))
+    r = n - len(prefix)
+    if "_" not in charset or mode == "anywhere":
+        return len(charset) ** r
+    if mode == "none":
+        return 0 if "_" in prefix else k ** r
+    if r == 0:
+        return 1 if name_allowed(prefix, mode) else 0
+    if prefix and prefix[0] == "_":
+        return 0
+    u = prefix.count("_")
+    if u > 1:
+        return 0
+    if u == 1:
+        return k ** r                           # no more underscores allowed
+    free = r - 1 if prefix else r - 2           # underscore can't be first or last
+    with_one = max(free, 0) * k ** (r - 1)
+    return with_one + (k ** r if mode == "max1" else 0)
+
+
+def count_before(start, charset, mode, min_len):
+    """How many allowed names come before `start` in checking order (for the progress bar)."""
+    total = count_names(min_len, len(start) - 1, charset, mode) if len(start) > min_len else 0
+    pos = {ch: i for i, ch in enumerate(charset)}
+    for i, ch in enumerate(start):
+        for c in charset[:pos[ch]]:
+            total += _completions(start[:i] + c, len(start), charset, mode)
+    return total
+
+
+def _odometer(length, charset, begin=None):
+    """All strings of `length` over charset in order, starting at `begin` (no skipping loop)."""
+    base = len(charset)
+    digits = [charset.index(c) for c in begin] if begin else [0] * length
+    chars = [charset[d] for d in digits]
+    while True:
+        yield "".join(chars)
+        i = length - 1
+        while i >= 0:
+            digits[i] += 1
+            if digits[i] < base:
+                chars[i] = charset[digits[i]]
+                break
+            digits[i] = 0
+            chars[i] = charset[0]
+            i -= 1
+        if i < 0:
+            return
+
+
+def generate_names(min_len, max_len, charset, start=None, shuffle=False, mode="anywhere"):
+    """Yield every allowed name with a length in [min_len, max_len] built from charset."""
+    check = "_" in charset and mode != "anywhere"
     for length in range(min_len, max_len + 1):
         if shuffle:
             for idx in _random_permutation(len(charset) ** length):
-                yield _index_to_name(idx, length, charset)
+                name = _index_to_name(idx, length, charset)
+                if not check or name_allowed(name, mode):
+                    yield name
             continue
         if start and length < len(start):
             continue
-        skipping = bool(start) and length == len(start)
-        for combo in itertools.product(charset, repeat=length):
-            name = "".join(combo)
-            if skipping:
-                if name != start:
-                    continue
-                skipping = False
-            yield name
+        begin = start if start and length == len(start) else None
+        for name in _odometer(length, charset, begin):
+            if not check or name_allowed(name, mode):
+                yield name
+
+
+class SkipRecent:
+    """
+    Wraps a name generator and drops names the `already_checked(names) -> set`
+    callback says were checked recently (looked up 500 at a time).
+    """
+
+    def __init__(self, names, already_checked, chunk=500):
+        self._names = iter(names)
+        self._already = already_checked
+        self._chunk = chunk
+        self._buf = collections.deque()
+        self.skipped = 0
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        while not self._buf:
+            batch = list(itertools.islice(self._names, self._chunk))
+            if not batch:
+                raise StopIteration
+            done = self._already(batch)
+            keep = [n for n in batch if n not in done]
+            self.skipped += len(batch) - len(keep)
+            self._buf.extend(keep)
+        return self._buf.popleft()
 
 
 def _index_to_name(idx, length, charset):

@@ -26,8 +26,9 @@ CREATE TABLE IF NOT EXISTS names (
 
 
 class History:
-    def __init__(self, path):
-        self.db = sqlite3.connect(path, timeout=10)
+    def __init__(self, path, any_thread=False):
+        # any_thread: the caller promises to use it from one thread at a time
+        self.db = sqlite3.connect(path, timeout=10, check_same_thread=not any_thread)
         self.db.execute("PRAGMA journal_mode=WAL")      # searches can read while we write
         self.db.execute("PRAGMA synchronous=NORMAL")
         self.db.execute(SCHEMA)
@@ -67,6 +68,19 @@ class History:
         where, args = self._where(term, statuses)
         return self.db.execute(f"SELECT COUNT(*) FROM (SELECT 1 FROM names{where} LIMIT ?)",
                                args + [cap]).fetchone()[0]
+
+    def recently_checked(self, names, since, statuses=(TAKEN, BLOCKED, HELD)):
+        """The subset of `names` checked after `since` (epoch seconds) with one of `statuses`."""
+        names = [n.lower() for n in names]
+        found = set()
+        st = ",".join(str(int(x)) for x in statuses)
+        for i in range(0, len(names), 500):
+            part = names[i:i + 500]
+            rows = self.db.execute(
+                f"SELECT name FROM names WHERE name IN ({','.join('?' * len(part))}) "
+                f"AND checked >= ? AND available IN ({st})", part + [since]).fetchall()
+            found.update(r[0] for r in rows)
+        return found
 
     def totals(self):
         """(checked, available, locked)"""

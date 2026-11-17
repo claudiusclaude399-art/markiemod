@@ -15,7 +15,9 @@ Windows may show "Windows protected your PC" because the exe isn't signed: click
 | Option | What it does |
 |---|---|
 | Username length | e.g. 3 to 4, or 5 to 5. Minecraft allows 3-16 characters. |
-| Letters / Numbers / Underscores | which characters the names are built from |
+| Letters / Numbers | which characters the names are built from |
+| Underscores | **None**, **Anywhere** (`_ab`, `a__`), **At most 1, not at start/end** (`abc`, `ab_c`) or **Exactly 1, not at start/end** (`a_b`, `ab_c` - only underscore names) |
+| Skip | skips names that were **taken or locked** when checked in the last N days (default 1), so re-running a range or continuing after Stop doesn't waste lookups on them. Free names are always re-checked |
 | Order | in order (aaa, aab, ...) or random |
 | Start from | continue where you left off - filled in automatically when you press Stop |
 | Parallel requests | how many lookups run at once (default 12) |
@@ -76,6 +78,9 @@ Shortcuts: **F5** start, **Esc** stop, **Ctrl+F** search. Select names and press
   it speeds up until Mojang says "slow down", pauses just that server briefly,
   and keeps going on the others.
 
+- skips names it already found taken/locked recently (see **Skip**)
+- jumps straight to "Start from" even deep into long names, instead of stepping through every earlier name
+
 The real limit is Mojang's: they cap how many lookups one internet connection can make.
 
 ## Notes
@@ -86,6 +91,6 @@ someone changed away from in the last 37 days), so double-check in the launcher.
 ## Command-line version
 
 `python mc_name_checker.py --help` - same engine, coloured terminal output. Example:
-`python mc_name_checker.py --min 4 --max 4 --underscores --random`.
+`python mc_name_checker.py --min 4 --max 4 --underscores max1 --random`.
 
 Running from source needs Python 3 only (`python mc_name_checker_gui.py` for the window).

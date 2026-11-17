@@ -184,6 +184,7 @@ class App:
         self.out_file = None
         self.total = 0
         self.skipped = 0
+        self.skipper = None
         self.history = history.History(self.db_path)
 
         self.alert_hits = []            # short names shown in the banner
@@ -320,6 +321,7 @@ class App:
 
         self._settings_widgets = [self.sp_min, self.sp_max, self.cb_letters, self.cb_digits,
                                   self.cb_under, self.rb_seq, self.rb_rand, self.e_start,
+                                  self.cb_skip, self.sp_skip,
                                   self.sp_threads]
         root.bind("<F5>", lambda e: self.start())
         root.bind("<Escape>", lambda e: self.stop())
@@ -340,7 +342,9 @@ class App:
         self.v_max = tk.IntVar(value=4)
         self.v_letters = tk.BooleanVar(value=True)
         self.v_digits = tk.BooleanVar(value=True)
-        self.v_under = tk.BooleanVar(value=False)
+        self.v_under_mode = tk.StringVar(value=core.UNDERSCORE_MODES["none"])
+        self.v_skip = tk.BooleanVar(value=True)
+        self.v_skip_days = tk.IntVar(value=1)
         self.v_random = tk.BooleanVar(value=False)
         self.v_start = tk.StringVar()
 
@@ -366,14 +370,22 @@ class App:
                                           command=self._update_estimate)
         self.cb_digits = ttk.Checkbutton(cf, text="Numbers 0-9", variable=self.v_digits,
                                          command=self._update_estimate)
-        self.cb_under = ttk.Checkbutton(cf, text="Underscores _", variable=self.v_under,
-                                        command=self._update_estimate)
-        for w in (self.cb_letters, self.cb_digits, self.cb_under):
+        for w in (self.cb_letters, self.cb_digits):
             w.pack(side="left", padx=(0, 12))
 
-        ttk.Label(s, text="Order:").grid(row=2, column=0, sticky="w", pady=3)
+        ttk.Label(s, text="Underscores:").grid(row=2, column=0, sticky="w", pady=3)
+        uf = ttk.Frame(s)
+        uf.grid(row=2, column=1, sticky="w")
+        self.cb_under = ttk.Combobox(uf, textvariable=self.v_under_mode, state="readonly",
+                                     values=list(core.UNDERSCORE_MODES.values()), width=26)
+        self.cb_under.pack(side="left")
+        self.cb_under.bind("<<ComboboxSelected>>", lambda e: self._update_estimate())
+        self.lbl_under_hint = ttk.Label(uf, text="", style="Hint.TLabel")
+        self.lbl_under_hint.pack(side="left", padx=(8, 0))
+
+        ttk.Label(s, text="Order:").grid(row=3, column=0, sticky="w", pady=3)
         of = ttk.Frame(s)
-        of.grid(row=2, column=1, sticky="w")
+        of.grid(row=3, column=1, sticky="w")
         self.rb_seq = ttk.Radiobutton(of, text="In order (aaa, aab, aac ...)", value=False,
                                       variable=self.v_random, command=self._order_changed)
         self.rb_rand = ttk.Radiobutton(of, text="Random", value=True,
@@ -381,16 +393,26 @@ class App:
         self.rb_seq.pack(side="left", padx=(0, 12))
         self.rb_rand.pack(side="left")
 
-        ttk.Label(s, text="Start from:").grid(row=3, column=0, sticky="w", pady=3)
+        ttk.Label(s, text="Start from:").grid(row=4, column=0, sticky="w", pady=3)
         sf = ttk.Frame(s)
-        sf.grid(row=3, column=1, sticky="w")
+        sf.grid(row=4, column=1, sticky="w")
         self.e_start = ttk.Entry(sf, textvariable=self.v_start, width=18)
         self.e_start.pack(side="left")
         ttk.Label(sf, text="  optional - filled in when you press Stop",
                   style="Hint.TLabel").pack(side="left")
 
+        ttk.Label(s, text="Skip:").grid(row=5, column=0, sticky="w", pady=3)
+        kf = ttk.Frame(s)
+        kf.grid(row=5, column=1, sticky="w")
+        self.cb_skip = ttk.Checkbutton(kf, text="taken/locked names already checked in the last",
+                                       variable=self.v_skip)
+        self.cb_skip.pack(side="left")
+        self.sp_skip = ttk.Spinbox(kf, from_=1, to=365, width=4, textvariable=self.v_skip_days)
+        self.sp_skip.pack(side="left", padx=4)
+        ttk.Label(kf, text="day(s)").pack(side="left")
+
         self.lbl_estimate = ttk.Label(s, text="", style="Hint.TLabel")
-        self.lbl_estimate.grid(row=4, column=0, columnspan=2, sticky="w", pady=(4, 0))
+        self.lbl_estimate.grid(row=6, column=0, columnspan=2, sticky="w", pady=(4, 0))
 
         # --- speed
         o = ttk.LabelFrame(top, text=" Speed ", padding=(12, 4))
@@ -492,6 +514,8 @@ class App:
             self.stat_labels[key] = lbl
             if key == "locked":
                 self.lbl_locked_cap = cap_lbl
+            if key == "checked":
+                self.lbl_checked_cap = cap_lbl
 
     def _build_live_tab(self, tab):
         tab.columnconfigure(0, weight=3)
@@ -621,8 +645,12 @@ class App:
         self.e_start.configure(state="disabled" if self.v_random.get() else "normal")
         self._update_estimate()
 
+    def _under_mode(self):
+        label = self.v_under_mode.get()
+        return next((k for k, v in core.UNDERSCORE_MODES.items() if v == label), "none")
+
     def _charset(self):
-        return core.build_charset(self.v_letters.get(), self.v_digits.get(), self.v_under.get())
+        return core.build_charset(self.v_letters.get(), self.v_digits.get(), self._under_mode())
 
     def _update_estimate(self):
         cs = self._charset()
@@ -630,7 +658,10 @@ class App:
             self.lbl_estimate.configure(text="Pick at least one kind of character.")
             return
         lo, hi = self._int(self.v_min, 3), self._int(self.v_max, 4)
-        total = core.count_names(lo, max(lo, hi), cs)
+        mode = self._under_mode()
+        self.lbl_under_hint.configure(text={"none": "", "anywhere": "e.g. _ab, a__",
+                                             "max1": "e.g. abc, ab_c", "one": "e.g. a_b, ab_c"}[mode])
+        total = core.count_names(lo, max(lo, hi), cs, mode)
         self.lbl_estimate.configure(text=f"{fmt_count(total)} possible names to check")
 
     def _set_settings_state(self, enabled):
@@ -660,24 +691,26 @@ class App:
         else:
             start = None
 
-        self.total = core.count_names(lo, hi, cs)
-        self.skipped = 0
-        if start:
-            # names before `start` are skipped - count them so the progress bar is right
-            for n in range(lo, len(start)):
-                self.skipped += len(cs) ** n
-            idx = 0
-            for ch in start:
-                idx = idx * len(cs) + cs.index(ch)
-            self.skipped += idx
+        mode = self._under_mode()
+        self.total = core.count_names(lo, hi, cs, mode)
+        # names before `start` are skipped - count them so the progress bar is right
+        self.skipped = core.count_before(start, cs, mode, lo) if start else 0
         self.progress.configure(value=0)
         self.stopped_by_alert = None
         self.n_free = self.n_locked = 0
+        self.lbl_checked_cap.configure(text="Checked")
         self.lock_checker = None
         if self.v_lockcheck.get() and self.token:
             self._start_lock_checker()
 
-        names = core.generate_names(lo, hi, cs, start=start, shuffle=self.v_random.get())
+        names = core.generate_names(lo, hi, cs, start=start, shuffle=self.v_random.get(), mode=mode)
+        self.skipper = None
+        if self.v_skip.get():
+            days = max(1, self._int(self.v_skip_days, 1))
+            since = time.time() - days * 86400
+            skip_db = history.History(self.db_path, any_thread=True)
+            self.skipper = names = core.SkipRecent(
+                names, lambda batch: skip_db.recently_checked(batch, since))
         self.checker = core.Checker(
             names, threads=self._int(self.v_threads, 12), charset=cs,
             on_result=lambda n, a: self.events.put(("result", n, a)),
@@ -723,6 +756,7 @@ class App:
             for lbl in self.stat_labels.values():
                 lbl.configure(text="0")
             self.lbl_locked_cap.configure(text="Locked")
+            self.lbl_checked_cap.configure(text="Checked")
             self.progress.configure(value=0)
 
     def copy_selected(self):
@@ -943,7 +977,7 @@ class App:
     def _schedule_search(self):
         if self._search_after:
             self.root.after_cancel(self._search_after)
-        self._search_after = self.root.after(250, self.run_search)
+        self._search_after = self.root.after(120, self.run_search)
 
     def _search_enter(self):
         term = self.v_search.get().strip()
@@ -1216,13 +1250,16 @@ class App:
             lc = self.lock_checker
             waiting = lc.pending() if lc and lc.is_alive() else 0
             self.stat_labels["checked"].configure(text=fmt_count(c.checked))
+            if self.skipper and self.skipper.skipped:
+                self.lbl_checked_cap.configure(text=f"Checked (+{fmt_count(self.skipper.skipped)} skipped)")
             self.stat_labels["available"].configure(text=fmt_count(self.n_free))
             self.stat_labels["locked"].configure(text=fmt_count(self.n_locked))
             self.stat_labels["taken"].configure(text=fmt_count(c.taken))
             self.stat_labels["speed"].configure(text=f"{c.speed():.0f}" if running else "0")
             self.lbl_locked_cap.configure(text=f"Locked ({waiting} to check)" if waiting else "Locked")
             if self.total:
-                done = (self.skipped + c.checked) / self.total
+                recent = self.skipper.skipped if self.skipper else 0
+                done = (self.skipped + recent + c.checked) / self.total
                 self.progress.configure(value=min(1000, done * 1000))
             if not running and lc and lc.is_alive():
                 if waiting == 0 and self.events.empty():
@@ -1245,6 +1282,8 @@ class App:
     def _finished(self):
         c = self.checker
         counts = f"{self.n_free:,} available" + (f", {self.n_locked:,} locked" if self.n_locked else "")
+        if self.skipper and self.skipper.skipped:
+            counts += f", {self.skipper.skipped:,} skipped (checked recently)"
         if c.finished_all():
             self._status(f"Done - checked every name. {counts}.")
             self._log("Finished: every name checked.", "info")
