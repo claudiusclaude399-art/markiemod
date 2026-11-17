@@ -11,6 +11,7 @@ Why it is fast:
 """
 
 import collections
+import heapq
 import http.client
 import itertools
 import json
@@ -179,6 +180,10 @@ class LookupFailed(Exception):
     pass
 
 
+class AuthFailed(Exception):
+    """The Minecraft login token is wrong or has expired."""
+
+
 _ssl_ctx = ssl.create_default_context()
 _local = threading.local()
 
@@ -208,10 +213,11 @@ def _drop_connection(scheme, host):
             pass
 
 
-def _request(method, url, body=None):
+def _request(method, url, body=None, extra_headers=None):
     parts = urlsplit(url)
     path = parts.path + (("?" + parts.query) if parts.query else "")
     headers = {"User-Agent": USER_AGENT, "Accept": "application/json"}
+    headers.update(extra_headers or {})
     if body is not None:
         headers["Content-Type"] = "application/json"
     for attempt in (1, 2):      # retry once on a stale kept-alive connection
@@ -271,6 +277,184 @@ def check_one(name, endpoints=None):
         except (RateLimited, LookupFailed) as e:
             last = e
     raise LookupFailed(f"no Mojang server answered ({type(last).__name__} {last or ''})".strip())
+
+
+# --------------------------------------------------------------------------- locked-name check
+#
+# The public lookups above only say whether an ACCOUNT has a name. A name nobody
+# has can still be locked: blocked by Mojang, or on hold after someone changed
+# away from it. Only Mojang's logged-in check (the one the launcher uses when you
+# change your name) can tell, so it needs the user's Minecraft access token.
+
+PROFILE_URL = "https://api.minecraftservices.com/minecraft/profile"
+CLAIM_URL = "https://api.minecraftservices.com/minecraft/profile/name/{}/available"
+
+CLAIMABLE = "AVAILABLE"      # really free - you can take it
+HELD = "DUPLICATE"           # nobody shows up with it, yet it isn't free -> on hold
+BLOCKED = "NOT_ALLOWED"      # Mojang doesn't allow this name
+UNVERIFIED = "UNVERIFIED"    # couldn't run the locked check (no/expired login)
+
+
+def clean_token(token):
+    """Accept a token pasted with quotes, spaces or a 'Bearer ' prefix."""
+    token = (token or "").strip().strip('"').strip("'").strip()
+    if token.lower().startswith("bearer "):
+        token = token[7:].strip()
+    return token
+
+
+def _auth(token):
+    return {"Authorization": "Bearer " + token}
+
+
+def token_owner(token):
+    """Name of the Minecraft profile the token belongs to ('' if it has none yet)."""
+    status, data = _request("GET", PROFILE_URL, extra_headers=_auth(token))
+    if status in (401, 403):
+        raise AuthFailed()
+    if status == 429:
+        raise RateLimited()
+    if status == 404:
+        return ""
+    if status != 200:
+        raise LookupFailed(f"HTTP {status}")
+    try:
+        return json.loads(data).get("name", "")
+    except ValueError:
+        raise LookupFailed("bad JSON")
+
+
+def check_claimable(name, token):
+    """CLAIMABLE, HELD or BLOCKED. Raises AuthFailed / RateLimited / LookupFailed."""
+    status, data = _request("GET", CLAIM_URL.format(quote(name)), extra_headers=_auth(token))
+    if status in (401, 403):
+        raise AuthFailed()
+    if status == 429:
+        raise RateLimited()
+    if status != 200:
+        raise LookupFailed(f"HTTP {status}")
+    try:
+        result = str(json.loads(data).get("status", "")).upper()
+    except (ValueError, AttributeError):
+        raise LookupFailed("bad JSON")
+    if result not in (CLAIMABLE, HELD, BLOCKED):
+        raise LookupFailed(f"unknown answer {result!r}")
+    return result
+
+
+class LockChecker:
+    """
+    Background queue that runs the locked check on names that look free.
+    Mojang allows far fewer of these than normal lookups, so it runs at its
+    own (self-tuning) pace and checks the shortest names first.
+
+    on_result(name, verdict) gets CLAIMABLE / HELD / BLOCKED / UNVERIFIED.
+    on_auth_failed() is called once if the token stops working; everything
+    still waiting is then reported as UNVERIFIED.
+    """
+
+    def __init__(self, token, on_result, on_status=None, on_auth_failed=None):
+        self.token = token
+        self.on_result = on_result
+        self.on_status = on_status or (lambda s: None)
+        self.on_auth_failed = on_auth_failed or (lambda: None)
+        self.endpoint = Endpoint("locked check", CLAIM_URL, "auth", 1, start_rate=1.0, max_rate=5.0)
+        self._heap = []
+        self._seq = itertools.count()
+        self._cv = threading.Condition()
+        self._busy = 0
+        self._stop = False
+        self.dead = False
+        self._thread = threading.Thread(target=self._run, name="lock-checker", daemon=True)
+        self._thread.start()
+
+    def submit(self, name):
+        with self._cv:
+            if self.dead or self._stop:
+                self.on_result(name, UNVERIFIED)
+                return
+            heapq.heappush(self._heap, (len(name), next(self._seq), name))
+            self._cv.notify()
+
+    def pending(self):
+        with self._cv:
+            return len(self._heap) + self._busy
+
+    def accepting(self):
+        with self._cv:
+            return not (self.dead or self._stop)
+
+    def is_alive(self):
+        return self._thread.is_alive()
+
+    def stop(self):
+        """Stop now; names still waiting are reported as UNVERIFIED."""
+        with self._cv:
+            self._stop = True
+            self._cv.notify_all()
+
+    def _drain_unverified(self):
+        with self._cv:
+            rest = [n for _, _, n in sorted(self._heap)]
+            self._heap.clear()
+        for n in rest:
+            self.on_result(n, UNVERIFIED)
+
+    def _wait_until(self, t):
+        while True:
+            with self._cv:
+                if self._stop:
+                    return False
+                d = t - time.monotonic()
+                if d <= 0:
+                    return True
+                self._cv.wait(min(d, 0.25))
+
+    def _run(self):
+        failures = 0
+        while True:
+            with self._cv:
+                while not self._heap and not self._stop:
+                    self._cv.wait(0.5)
+                if self._stop:
+                    break
+                _, _, name = heapq.heappop(self._heap)
+                self._busy = 1
+            verdict = None
+            try:
+                if not self._wait_until(self.endpoint.reserve()):
+                    verdict = UNVERIFIED
+                else:
+                    verdict = check_claimable(name, self.token)
+                    self.endpoint.success()
+                    failures = 0
+            except RateLimited:
+                wait = self.endpoint.rate_limited()
+                self.on_status(f"Locked check: Mojang asked us to slow down - pausing {wait}s")
+                with self._cv:                       # try this name again later
+                    heapq.heappush(self._heap, (len(name), next(self._seq), name))
+            except AuthFailed:
+                with self._cv:
+                    self.dead = True
+                    self._stop = True
+                verdict = UNVERIFIED
+                self.on_auth_failed()
+            except LookupFailed as e:
+                failures += 1
+                if failures >= 3:
+                    verdict = UNVERIFIED
+                    failures = 0
+                else:
+                    self.endpoint.failed()
+                    self.on_status(f"Locked check: {e} - retrying")
+                    with self._cv:
+                        heapq.heappush(self._heap, (len(name), next(self._seq), name))
+            finally:
+                with self._cv:
+                    self._busy = 0
+            if verdict:
+                self.on_result(name, verdict)
+        self._drain_unverified()
 
 
 # --------------------------------------------------------------------------- engine

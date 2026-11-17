@@ -30,9 +30,19 @@ WIN_BG = "#FFFFFF"
 WIN_PANEL = "#F2F2F2"
 WIN_SUCCESS_BG = "#DFF6DD"      # Windows "success" info bar
 WIN_SUCCESS_EDGE = "#9FD89F"
-WIN_HIGHLIGHT = "#FFF4CE"       # Windows "warning" yellow - used to mark short-name hits
+WIN_LOCKED_FG = "#8A6A00"       # dark gold text - readable "yellow" on white
+WIN_LOCKED_BG = "#FFF4CE"       # Windows "warning" yellow background
 
 MAX_LOG_LINES = 3000
+
+STATUS_TEXT = {history.TAKEN: "taken", history.FREE: "AVAILABLE",
+               history.BLOCKED: "LOCKED - blocked", history.HELD: "LOCKED - on hold"}
+STATUS_TAG = {history.TAKEN: "taken", history.FREE: "free",
+              history.BLOCKED: "locked", history.HELD: "locked"}
+VERDICT_STATUS = {core.CLAIMABLE: history.FREE, core.UNVERIFIED: history.FREE,
+                  core.BLOCKED: history.BLOCKED, core.HELD: history.HELD}
+LOCK_REASON = {core.BLOCKED: "blocked by Mojang",
+               core.HELD: "on hold (recently changed) or just taken"}
 SEARCH_LIMIT = 500
 
 
@@ -153,6 +163,12 @@ class App:
         self.history = history.History(self.db_path)
 
         self.alert_hits = []            # short names shown in the banner
+        self.token = None               # Minecraft access token (memory only, never saved)
+        self.token_owner = None
+        self.lock_checker = None
+        self.login_dialog = None
+        self.n_free = 0
+        self.n_locked = 0
         self.pending_toast = []
         self.last_toast = 0.0
         self.stopped_by_alert = None
@@ -215,6 +231,10 @@ class App:
         style.configure("StatNum.TLabel", font=self.font_big, background=WIN_BG)
         style.configure("Green.StatNum.TLabel", foreground=WIN_GREEN)
         style.configure("Red.StatNum.TLabel", foreground=WIN_RED)
+        style.configure("Gold.StatNum.TLabel", foreground=WIN_LOCKED_FG)
+        style.configure("Locked.TLabel", foreground=WIN_LOCKED_FG, font=self.font_bold)
+        style.configure("LoginOk.TLabel", foreground=WIN_GREEN)
+        style.configure("LoginBad.TLabel", foreground=WIN_RED)
         style.configure("Blue.StatNum.TLabel", foreground=WIN_BLUE)
         style.configure("StatCap.TLabel", foreground=WIN_GREY, background=WIN_BG)
         style.configure("Free.TLabel", foreground=WIN_GREEN, font=self.font_bold)
@@ -233,9 +253,9 @@ class App:
         # header
         head = ttk.Frame(root, padding=(16, 12, 16, 4))
         head.grid(row=0, column=0, sticky="ew")
-        ttk.Label(head, text=APP_NAME, style="Title.TLabel").pack(anchor="w")
-        ttk.Label(head, text="Finds unclaimed Minecraft names.  Green = available,  red = taken.",
-                  style="Sub.TLabel").pack(anchor="w")
+        ttk.Label(head, text=APP_NAME, style="Title.TLabel").pack(side="left")
+        ttk.Label(head, text="Green = available,  yellow = locked,  red = taken",
+                  style="Sub.TLabel").pack(side="left", padx=(14, 0), pady=(8, 0))
 
         self._build_settings(row=1)
         self._build_banner(row=2)
@@ -284,7 +304,7 @@ class App:
 
         # --- search settings
         s = ttk.LabelFrame(top, text=" Search ", padding=(12, 6))
-        s.grid(row=0, column=0, rowspan=2, sticky="nsew", padx=(0, 8))
+        s.grid(row=0, column=0, rowspan=3, sticky="nsew", padx=(0, 8))
 
         self.v_min = tk.IntVar(value=3)
         self.v_max = tk.IntVar(value=4)
@@ -350,10 +370,8 @@ class App:
         ttk.Label(o, text="Parallel requests:").grid(row=0, column=0, sticky="w", pady=2)
         self.sp_threads = ttk.Spinbox(o, from_=1, to=64, width=5, textvariable=self.v_threads)
         self.sp_threads.grid(row=0, column=1, sticky="w", padx=(6, 0))
-        ttk.Label(o, text="(self-tuning)", style="Hint.TLabel").grid(row=0, column=2, sticky="w",
-                                                                    padx=(6, 0))
-        ttk.Checkbutton(o, text="Show taken names (red)", variable=self.v_show_taken
-                        ).grid(row=1, column=0, columnspan=3, sticky="w", pady=(2, 0))
+        ttk.Checkbutton(o, text="Show taken names", variable=self.v_show_taken
+                        ).grid(row=0, column=2, sticky="w", padx=(16, 0))
 
         # --- short-name alerts
         a = ttk.LabelFrame(top, text=" Short-name alerts ", padding=(12, 4))
@@ -374,6 +392,18 @@ class App:
                         ).grid(row=1, column=0, sticky="w", padx=(20, 0), pady=1)
         ttk.Checkbutton(a, text="Stop searching when one is found", variable=self.v_alert_stop
                         ).grid(row=2, column=0, sticky="w", padx=(20, 0), pady=1)
+
+        # --- locked names
+        k = ttk.LabelFrame(top, text=" Locked names ", padding=(12, 4))
+        k.grid(row=2, column=1, sticky="nsew", pady=(6, 0))
+        self.v_lockcheck = tk.BooleanVar(value=False)
+        ttk.Checkbutton(k, text="Check that free names aren't locked (yellow)",
+                        variable=self.v_lockcheck, command=self._lockcheck_toggled
+                        ).grid(row=0, column=0, columnspan=2, sticky="w")
+        ttk.Button(k, text="Log in...", command=self.open_login, padding=(6, 1)
+                   ).grid(row=1, column=0, sticky="w", padx=(20, 0), pady=(2, 1))
+        self.lbl_login = ttk.Label(k, text="Needs your Minecraft login", style="Hint.TLabel")
+        self.lbl_login.grid(row=1, column=1, sticky="w", padx=(8, 0))
 
     def _build_banner(self, row):
         self.banner = tk.Frame(self.root, bg=WIN_SUCCESS_BG, highlightthickness=1,
@@ -404,14 +434,18 @@ class App:
         self.stat_labels = {}
         for key, cap, st in (("checked", "Checked", "StatNum.TLabel"),
                              ("available", "Available", "Green.StatNum.TLabel"),
+                             ("locked", "Locked", "Gold.StatNum.TLabel"),
                              ("taken", "Taken", "Red.StatNum.TLabel"),
                              ("speed", "Names / sec", "Blue.StatNum.TLabel")):
             f = ttk.Frame(stats)
             f.pack(side="left", padx=(18, 0))
             lbl = ttk.Label(f, text="0", style=st)
             lbl.pack(anchor="e")
-            ttk.Label(f, text=cap, style="StatCap.TLabel").pack(anchor="e")
+            cap_lbl = ttk.Label(f, text=cap, style="StatCap.TLabel")
+            cap_lbl.pack(anchor="e")
             self.stat_labels[key] = lbl
+            if key == "locked":
+                self.lbl_locked_cap = cap_lbl
 
     def _build_live_tab(self, tab):
         tab.columnconfigure(0, weight=3)
@@ -425,14 +459,21 @@ class App:
         self.txt = tk.Text(lf, font=self.font_mono, bg=WIN_BG, relief="flat", borderwidth=0,
                            highlightthickness=0, wrap="none", state="disabled", height=10,
                            cursor="arrow")
-        sb = ttk.Scrollbar(lf, orient="vertical", command=self.txt.yview)
+        sb = ttk.Scrollbar(lf, orient="vertical",
+                           command=lambda *a: (self.txt.yview(*a), self._log_scrolled()))
         self.txt.configure(yscrollcommand=sb.set)
         self.txt.grid(row=0, column=0, sticky="nsew")
+        # the log follows new results unless you scroll up; scrolling back down resumes it
+        self._follow_log = True
+        for seq in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
+            self.txt.bind(seq, lambda e: self._log_scrolled(), add="+")
         sb.grid(row=0, column=1, sticky="ns")
         self.txt.tag_configure("free", foreground=WIN_GREEN, font=(self.font_mono[0], 10, "bold"))
-        self.txt.tag_configure("alert", foreground=WIN_GREEN, background=WIN_HIGHLIGHT,
+        self.txt.tag_configure("alert", foreground=WIN_GREEN, background=WIN_SUCCESS_BG,
                                font=(self.font_mono[0], 10, "bold"))
         self.txt.tag_configure("taken", foreground=WIN_RED)
+        self.txt.tag_configure("locked", foreground=WIN_LOCKED_FG, background=WIN_LOCKED_BG,
+                               font=(self.font_mono[0], 10, "bold"))
         self.txt.tag_configure("info", foreground=WIN_GREY)
 
         af = ttk.LabelFrame(tab, text=" Available names ", padding=4)
@@ -469,7 +510,8 @@ class App:
         self.v_search.trace_add("write", lambda *a: self._schedule_search())
         self.e_search.bind("<Return>", lambda e: self._search_enter())
         self.v_filter = tk.StringVar(value="all")
-        for text, val in (("All", "all"), ("Available", "free"), ("Taken", "taken")):
+        for text, val in (("All", "all"), ("Available", "free"), ("Locked", "locked"),
+                          ("Taken", "taken")):
             ttk.Radiobutton(row, text=text, value=val, variable=self.v_filter,
                             command=self.run_search).pack(side="left", padx=(0, 10))
         ttk.Button(row, text="Refresh", command=self.run_search).pack(side="left", padx=(6, 0))
@@ -498,6 +540,7 @@ class App:
             self.tree.column(col, width=width, anchor=anchor, stretch=(col == "name"))
         self.tree.tag_configure("free", foreground=WIN_GREEN)
         self.tree.tag_configure("taken", foreground=WIN_RED)
+        self.tree.tag_configure("locked", foreground=WIN_LOCKED_FG, background=WIN_LOCKED_BG)
         sb = ttk.Scrollbar(tf, orient="vertical", command=self.tree.yview)
         self.tree.configure(yscrollcommand=sb.set)
         self.tree.grid(row=0, column=0, sticky="nsew")
@@ -583,6 +626,10 @@ class App:
             self.skipped += idx
         self.progress.configure(value=0)
         self.stopped_by_alert = None
+        self.n_free = self.n_locked = 0
+        self.lock_checker = None
+        if self.v_lockcheck.get() and self.token:
+            self._start_lock_checker()
 
         names = core.generate_names(lo, hi, cs, start=start, shuffle=self.v_random.get())
         self.checker = core.Checker(
@@ -596,7 +643,8 @@ class App:
             self.out_file = None
         self._log(f"Started: {lo}-{hi} characters from '{cs}'"
                   + (f", starting at {start}" if start else "")
-                  + (", random order" if self.v_random.get() else ""), "info")
+                  + (", random order" if self.v_random.get() else "")
+                  + (", checking free names for locks" if self.lock_checker else ""), "info")
         self.checker.start()
         self._set_settings_state(False)
         self.btn_start.configure(state="disabled")
@@ -604,21 +652,31 @@ class App:
         self._status("Checking...")
 
     def stop(self):
+        busy = False
         if self.checker and self.checker.is_running():
             self.checker.stop()
+            busy = True
+        if self.lock_checker and self.lock_checker.is_alive():
+            self.lock_checker.stop()            # names still waiting show as "lock not checked"
+            busy = True
+        if busy:
             self.btn_stop.configure(state="disabled")
             self._status("Stopping...")
 
     def clear(self):
+        self._follow_log = True
         self.txt.configure(state="normal")
         self.txt.delete("1.0", "end")
         self.txt.configure(state="disabled")
         self.lst.delete(0, "end")
         self.available_names.clear()
         self.dismiss_banner()
-        if not (self.checker and self.checker.is_running()):
+        if self.btn_start.instate(["!disabled"]):           # not running
+            self.checker = None
+            self.n_free = self.n_locked = 0
             for lbl in self.stat_labels.values():
                 lbl.configure(text="0")
+            self.lbl_locked_cap.configure(text="Locked")
             self.progress.configure(value=0)
 
     def copy_selected(self):
@@ -651,6 +709,8 @@ class App:
     def on_close(self):
         if self.checker:
             self.checker.stop()
+        if self.lock_checker:
+            self.lock_checker.stop()
         if self.out_file:
             self.out_file.close()
         try:
@@ -702,6 +762,61 @@ class App:
             self._clip("\n".join(self.alert_hits))
             self._status(f"Copied {len(self.alert_hits)} name(s)")
 
+    # ------------------------------------------------------------------ locked-name check
+    def _start_lock_checker(self):
+        self.lock_checker = core.LockChecker(
+            self.token,
+            on_result=lambda n, v: self.events.put(("lock", n, v)),
+            on_status=lambda t: self.events.put(("status", t)),
+            on_auth_failed=lambda: self.events.put(("auth_failed",)),
+        )
+
+    def _lockcheck_toggled(self):
+        if self.v_lockcheck.get():
+            if not self.token:
+                self.open_login()
+                return
+            running = self.checker and self.checker.is_running()
+            if running and not (self.lock_checker and self.lock_checker.accepting()):
+                self._start_lock_checker()
+        elif self.lock_checker:
+            self.lock_checker.stop()            # names still waiting show as "lock not checked"
+
+    def open_login(self):
+        if self.login_dialog:
+            self.login_dialog.top.lift()
+            return
+        self.login_dialog = LoginDialog(self)
+
+    def _login_closed(self):
+        self.login_dialog = None
+        if self.v_lockcheck.get() and not self.token:
+            self.v_lockcheck.set(False)
+
+    def set_login(self, token, owner):
+        self.token, self.token_owner = token, owner
+        if token:
+            who = owner or "your account"
+            self.lbl_login.configure(text=f"\u2714 Logged in as {who}", style="LoginOk.TLabel")
+            self.v_lockcheck.set(True)
+            self._lockcheck_toggled()
+            self._status(f"Logged in as {who} - free names will be checked for locks")
+        else:
+            self.lbl_login.configure(text="Needs your Minecraft login", style="Hint.TLabel")
+            self.v_lockcheck.set(False)
+            self._lockcheck_toggled()
+
+    def _auth_failed(self):
+        if self.token is None:
+            return                              # already handled
+        self.token = None
+        self.lbl_login.configure(text="Login ran out - log in again", style="LoginBad.TLabel")
+        self.v_lockcheck.set(False)
+        msg = ("Mojang stopped accepting your login (tokens run out after about a day). "
+               "The locked check is off - press Log in... to get a new token.")
+        self._status(msg)
+        self._log(msg, "info")
+
     # ------------------------------------------------------------------ search tab
     def focus_search(self):
         self.tabs.select(self.tab_search)
@@ -732,7 +847,8 @@ class App:
         self._search_id += 1
         sid = self._search_id
         term = self.v_search.get().strip().lower()
-        available = {"all": None, "free": True, "taken": False}[self.v_filter.get()]
+        statuses = {"all": None, "free": (history.FREE,), "locked": history.LOCKED,
+                    "taken": (history.TAKEN,)}[self.v_filter.get()]
         self._search_busy = True
         self._last_search = time.monotonic()
 
@@ -740,8 +856,8 @@ class App:
             try:
                 h = history.History(self.db_path)       # own connection for this thread
                 try:
-                    rows = h.search(term, available, SEARCH_LIMIT)
-                    count = h.count(term, available)
+                    rows = h.search(term, statuses, SEARCH_LIMIT)
+                    count = h.count(term, statuses)
                     exact = h.get(term) if term else None
                     totals = h.totals()
                 finally:
@@ -757,23 +873,23 @@ class App:
             return                                      # an older search - ignore
         self._search_busy = False
         self.tree.delete(*self.tree.get_children())
-        for name, avail, checked in rows:
-            self.tree.insert("", "end", values=(name, "AVAILABLE" if avail else "taken",
-                                                time_ago(checked)),
-                             tags=("free" if avail else "taken",))
+        for name, st, checked in rows:
+            self.tree.insert("", "end", values=(name, STATUS_TEXT.get(st, "?"), time_ago(checked)),
+                             tags=(STATUS_TAG.get(st, "taken"),))
         more = f" (showing first {SEARCH_LIMIT:,})" if count > SEARCH_LIMIT else ""
         plus = "+" if count >= history.COUNT_CAP else ""
         self.lbl_matches.configure(
             text=f"{fmt_count(count)}{plus} match{'es' if count != 1 else ''}{more}")
         self.lbl_totals.configure(text=f"{totals[0]:,} names checked so far  -  "
-                                       f"{totals[1]:,} available")
+                                       f"{totals[1]:,} available  -  {totals[2]:,} locked")
 
         valid = bool(core.VALID_NAME.match(term))
         if exact:
-            avail, checked = exact
-            self.lbl_lookup.configure(
-                text=f"{term}  is  {'AVAILABLE' if avail else 'TAKEN'}   (checked {time_ago(checked)})",
-                style="Free.TLabel" if avail else "Taken.TLabel")
+            st, checked = exact
+            style = {history.FREE: "Free.TLabel", history.TAKEN: "Taken.TLabel"}.get(st, "Locked.TLabel")
+            word = STATUS_TEXT.get(st, "?").upper().replace(" - ", " (") + (")" if st in history.LOCKED else "")
+            self.lbl_lookup.configure(text=f"{term}  is  {word}   (checked {time_ago(checked)})",
+                                      style=style)
         elif valid:
             self.lbl_lookup.configure(text=f"{term}  hasn't been checked yet.", style="TLabel")
         elif term:
@@ -796,23 +912,43 @@ class App:
         self.btn_check_now.configure(state="disabled")
         self.lbl_lookup.configure(text=f"Checking {name} ...", style="TLabel")
 
+        token = self.token
+
         def work():
             try:
-                self.events.put(("checked_one", name, core.check_one(name), None))
+                if not core.check_one(name):
+                    verdict = None                          # taken
+                elif token:
+                    try:
+                        verdict = core.check_claimable(name, token)
+                    except core.AuthFailed:
+                        self.events.put(("auth_failed",))
+                        verdict = core.UNVERIFIED
+                    except (core.RateLimited, core.LookupFailed):
+                        verdict = core.UNVERIFIED
+                else:
+                    verdict = core.UNVERIFIED
+                self.events.put(("checked_one", name, verdict, None))
             except Exception as e:
                 self.events.put(("checked_one", name, None, str(e)))
 
         threading.Thread(target=work, daemon=True).start()
 
-    def _checked_one(self, name, available, error):
+    def _checked_one(self, name, verdict, error):
         if error:
             self.lbl_lookup.configure(text=f"Couldn't check {name}: {error}", style="TLabel")
             self.btn_check_now.configure(state="normal")
             return
-        self.history.add_many([(name, available)])
-        if available:
+        st = history.TAKEN if verdict is None else VERDICT_STATUS[verdict]
+        self.history.add_many([(name, st)])
+        if st == history.FREE:
             self._add_available([name.lower()])
-        self._status(f"{name} is {'available' if available else 'taken'}")
+        msg = {history.TAKEN: "taken", history.FREE: "available"}.get(st, "locked")
+        if verdict == core.UNVERIFIED:
+            msg += " (lock not checked - log in under Locked names to check)"
+        elif st in history.LOCKED:
+            msg += f" - {LOCK_REASON[verdict]}"
+        self._status(f"{name} is {msg}")
         self.run_search()
 
     def copy_tree_selection(self):
@@ -836,6 +972,11 @@ class App:
         self.txt.configure(state="normal")
         self.txt.insert("end", line + "\n", tag)
         self.txt.configure(state="disabled")
+        if self._follow_log:
+            self.txt.see("end")
+
+    def _log_scrolled(self):
+        self.root.after(50, lambda: setattr(self, "_follow_log", self.txt.yview()[1] > 0.995))
 
     def _add_available(self, names, alert=()):
         start = self.lst.size()
@@ -843,7 +984,7 @@ class App:
         self.lst.insert("end", *names)
         for i, n in enumerate(names):
             if n in alert:
-                self.lst.itemconfigure(start + i, background=WIN_HIGHLIGHT)
+                self.lst.itemconfigure(start + i, background=WIN_SUCCESS_BG)
         self.lst.see("end")
         try:
             if self.out_file:
@@ -860,22 +1001,46 @@ class App:
         status = None
         show_taken = self.v_show_taken.get()
         alert_len = self._alert_len() if self.v_alert_on.get() else 0
+        lc = self.lock_checker
+
+        def show_free(name, note=""):
+            new_free.append(name)
+            self.n_free += 1
+            if len(name) <= alert_len:
+                alerts.append(name)
+                lines.append((f"{name:<17}AVAILABLE{note}   \u2605 short name!", "alert"))
+            else:
+                lines.append((f"{name:<17}AVAILABLE{note}", "free"))
+
         try:
             for _ in range(20000):
                 ev = self.events.get_nowait()
                 kind = ev[0]
                 if kind == "result":
                     _, name, free = ev
-                    results.append((name, free))
+                    results.append((name, history.FREE if free else history.TAKEN))
                     if free:
-                        new_free.append(name)
-                        if len(name) <= alert_len:
-                            alerts.append(name)
-                            lines.append((f"{name:<17}AVAILABLE   ★ short name!", "alert"))
+                        if lc and lc.accepting():
+                            lc.submit(name)                 # shown once the locked check answers
                         else:
-                            lines.append((f"{name:<17}AVAILABLE", "free"))
+                            show_free(name, "  - lock not checked" if lc else "")
                     elif show_taken:
                         lines.append((f"{name:<17}taken", "taken"))
+                elif kind == "lock":
+                    _, name, verdict = ev
+                    if verdict in (core.BLOCKED, core.HELD):
+                        self.n_locked += 1
+                        results.append((name, VERDICT_STATUS[verdict]))
+                        lines.append((f"{name:<17}LOCKED  - {LOCK_REASON[verdict]}", "locked"))
+                    elif verdict == core.CLAIMABLE:
+                        show_free(name, "  - not locked")
+                    else:
+                        show_free(name, "  - lock not checked")
+                elif kind == "auth_failed":
+                    self._auth_failed()
+                elif kind == "login_result":
+                    if self.login_dialog:
+                        self.login_dialog.tested(*ev[1:])
                 elif kind == "status":
                     status = ev[1]
                 elif kind == "search":
@@ -896,7 +1061,6 @@ class App:
                 status = f"Couldn't save to checked_names.db: {e}"
 
         if lines:
-            at_bottom = self.txt.yview()[1] > 0.999
             self.txt.configure(state="normal")
             chunk = []
             for text, tag in lines[-MAX_LOG_LINES:]:
@@ -906,7 +1070,7 @@ class App:
             if extra > 0:
                 self.txt.delete("1.0", f"{extra + 1}.0")
             self.txt.configure(state="disabled")
-            if at_bottom:
+            if self._follow_log:
                 self.txt.see("end")
 
         if new_free:
@@ -915,32 +1079,43 @@ class App:
             self._handle_alerts(alerts)
         self._flush_toast()
 
-        if status:
-            self._status(status)
-
         c = self.checker
         if c:
             running = c.is_running()
+            lc = self.lock_checker
+            waiting = lc.pending() if lc and lc.is_alive() else 0
             self.stat_labels["checked"].configure(text=fmt_count(c.checked))
-            self.stat_labels["available"].configure(text=fmt_count(c.available))
+            self.stat_labels["available"].configure(text=fmt_count(self.n_free))
+            self.stat_labels["locked"].configure(text=fmt_count(self.n_locked))
             self.stat_labels["taken"].configure(text=fmt_count(c.taken))
             self.stat_labels["speed"].configure(text=f"{c.speed():.0f}" if running else "0")
+            self.lbl_locked_cap.configure(text=f"Locked ({waiting} to check)" if waiting else "Locked")
             if self.total:
                 done = (self.skipped + c.checked) / self.total
                 self.progress.configure(value=min(1000, done * 1000))
-            if not running and self.btn_start.instate(["disabled"]) and self.events.empty():
+            if not running and lc and lc.is_alive():
+                if waiting == 0 and self.events.empty():
+                    lc.stop()                               # every free name has been lock-checked
+                elif not status and lc.accepting():
+                    status = f"Checking {waiting} free name(s) for locks..."
+            lock_busy = bool(lc and lc.is_alive())
+            if (not running and not lock_busy and self.btn_start.instate(["disabled"])
+                    and self.events.empty()):
                 self._finished()
             # keep the search tab fresh while checking
             if (running and self._search_visible() and not self._search_busy
                     and time.monotonic() - self._last_search > 3):
                 self.run_search()
 
+        if status:
+            self._status(status)
         self.root.after(100, self._poll)
 
     def _finished(self):
         c = self.checker
+        counts = f"{self.n_free:,} available" + (f", {self.n_locked:,} locked" if self.n_locked else "")
         if c.finished_all():
-            self._status(f"Done - checked every name. {c.available:,} available.")
+            self._status(f"Done - checked every name. {counts}.")
             self._log("Finished: every name checked.", "info")
             self.v_start.set("")
         else:
@@ -948,7 +1123,7 @@ class App:
             if resume:
                 self.v_start.set(resume)
             why = f"Found {self.stopped_by_alert}! " if self.stopped_by_alert else ""
-            self._status(f"{why}Stopped. Checked {c.checked:,}, {c.available:,} available."
+            self._status(f"{why}Stopped. Checked {c.checked:,}, {counts}."
                          + (f"  Press Start to continue from {resume}." if resume else ""))
             self._log("Stopped." + (f" Will continue from {resume}." if resume else ""), "info")
         if self.out_file:
@@ -998,6 +1173,133 @@ class App:
         except Exception:
             pass
         self.root.after(300, self.on_close)
+
+
+class LoginDialog:
+    """Asks for the Minecraft access token used by the locked-name check."""
+
+    STEPS = (
+        "In Chrome or Edge, go to minecraft.net and log in.",
+        "Press F12 and open the Application tab.",
+        "On the left, open Cookies and click https://www.minecraft.net.",
+        "Click the cookie named  bearer_token  and copy its Value.",
+        "Paste it below and press Test and use.",
+    )
+
+    def __init__(self, app):
+        self.app = app
+        top = self.top = tk.Toplevel(app.root)
+        top.title("Log in - locked-name check")
+        top.configure(bg=WIN_BG)
+        top.transient(app.root)
+        top.resizable(False, False)
+        try:
+            top.iconbitmap(resource("icon.ico"))
+        except Exception:
+            pass
+        wrap = 480
+        frm = ttk.Frame(top, padding=18)
+        frm.pack(fill="both", expand=True)
+        ttk.Label(frm, text="Log in to spot locked names",
+                  font=(app.font_family, 13)).pack(anchor="w")
+        ttk.Label(frm, wraplength=wrap, justify="left", text=(
+            "A name nobody owns can still be locked: blocked by Mojang, or on hold for a while "
+            "after someone changed away from it. Only Mojang's logged-in check can tell (it's the "
+            "same check the launcher does when you change your name), so it needs your Minecraft "
+            "access token.")).pack(anchor="w", pady=(6, 10))
+
+        steps = ttk.LabelFrame(frm, text=" How to get your token ", padding=(12, 6))
+        steps.pack(fill="x")
+        for i, step in enumerate(self.STEPS, 1):
+            ttk.Label(steps, text=f"{i}.  {step}", wraplength=wrap - 30, justify="left"
+                      ).pack(anchor="w", pady=1)
+
+        row = ttk.Frame(frm)
+        row.pack(fill="x", pady=(12, 2))
+        ttk.Label(row, text="Token:").pack(side="left")
+        self.v_token = tk.StringVar(value=app.token or "")
+        self.entry = ttk.Entry(row, textvariable=self.v_token, show="\u2022", width=46)
+        self.entry.pack(side="left", padx=6, fill="x", expand=True)
+        ttk.Button(row, text="Paste", command=self.paste, padding=(6, 1)).pack(side="left")
+        self.v_show = tk.BooleanVar(value=False)
+        ttk.Checkbutton(frm, text="Show token", variable=self.v_show,
+                        command=lambda: self.entry.configure(
+                            show="" if self.v_show.get() else "\u2022")).pack(anchor="w")
+        self.lbl = ttk.Label(frm, text="", wraplength=wrap, justify="left")
+        self.lbl.pack(anchor="w", pady=(6, 0))
+        ttk.Label(frm, style="Hint.TLabel", wraplength=wrap, justify="left", text=(
+            "Keep this token private: anyone who has it can use your Minecraft account until it "
+            "runs out (about 24 hours). This program only sends it to Mojang and never saves it.")
+                  ).pack(anchor="w", pady=(8, 12))
+
+        btns = ttk.Frame(frm)
+        btns.pack(fill="x")
+        ttk.Button(btns, text="Close", command=self.close).pack(side="right")
+        if app.token:
+            ttk.Button(btns, text="Log out", command=self.logout).pack(side="right", padx=(0, 6))
+        self.btn_ok = ttk.Button(btns, text="Test and use", style="Accent.TButton",
+                                 command=self.test)
+        self.btn_ok.pack(side="right", padx=(0, 6))
+
+        top.bind("<Return>", lambda e: self.test())
+        top.bind("<Escape>", lambda e: self.close())
+        top.protocol("WM_DELETE_WINDOW", self.close)
+        top.update_idletasks()
+        x = app.root.winfo_rootx() + (app.root.winfo_width() - top.winfo_reqwidth()) // 2
+        y = app.root.winfo_rooty() + 40
+        top.geometry(f"+{max(0, x)}+{max(0, y)}")
+        top.grab_set()
+        self.entry.focus_set()
+
+    def paste(self):
+        try:
+            self.v_token.set(core.clean_token(self.app.root.clipboard_get()))
+        except tk.TclError:
+            pass
+
+    def test(self):
+        token = core.clean_token(self.v_token.get())
+        if not token:
+            self.lbl.configure(text="Paste your token first.", style="LoginBad.TLabel")
+            return
+        self.btn_ok.configure(state="disabled")
+        self.lbl.configure(text="Checking the token with Mojang ...", style="TLabel")
+        events = self.app.events
+
+        def work():
+            try:
+                res = ("ok", core.token_owner(token))
+            except core.AuthFailed:
+                res = ("bad", "Mojang didn't accept this token - it's wrong or has run out. "
+                              "Get a fresh one and try again.")
+            except core.RateLimited:
+                res = ("bad", "Mojang is busy right now - try again in a minute.")
+            except Exception as e:
+                res = ("bad", f"Couldn't reach Mojang: {e}")
+            events.put(("login_result", token, res))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def tested(self, token, res):
+        kind, value = res
+        if kind == "ok":
+            self.app.set_login(token, value)
+            self.close()
+        else:
+            self.btn_ok.configure(state="normal")
+            self.lbl.configure(text=value, style="LoginBad.TLabel")
+
+    def logout(self):
+        self.app.set_login(None, None)
+        self.close()
+
+    def close(self):
+        try:
+            self.top.grab_release()
+            self.top.destroy()
+        except tk.TclError:
+            pass
+        self.app._login_closed()
 
 
 def main():

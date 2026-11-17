@@ -22,4 +22,16 @@ one = {n: core.check_one(n) for n in ("Notch", SURELY_FREE[0])}
 print(f"[check_one] {one}")
 ok &= one == {"Notch": False, SURELY_FREE[0]: True}
 
+# locked-name check: no real login in CI, but a fake token must be rejected as "login wrong/expired"
+for label, call in (("token_owner", lambda: core.token_owner("not-a-real-token")),
+                    ("check_claimable", lambda: core.check_claimable("Notch", "not-a-real-token"))):
+    try:
+        print(f"[{label}] UNEXPECTED answer: {call()!r}")
+        ok = False
+    except core.AuthFailed:
+        print(f"[{label}] OK  fake token rejected (AuthFailed)")
+    except Exception as e:
+        print(f"[{label}] BAD {type(e).__name__}: {e}")
+        ok = False
+
 sys.exit(0 if ok else 1)
