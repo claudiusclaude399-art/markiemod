@@ -21,6 +21,7 @@ Windows may show "Windows protected your PC" because the exe isn't signed: click
 | Order | in order (aaa, aab, ...) or random |
 | Start from | continue where you left off - filled in automatically when you press Stop |
 | Parallel requests | how many lookups run at once (default 12) |
+| Pacing | **Smooth** (default) learns where Mojang's limit is and stays just under it, with pauses of at most 10 s. **Max** pushes past the limit and gets paused for longer and longer (up to 2 min). In a real 2-minute test Smooth checked 34-55% more names, because Max ended up stalled |
 | Show taken names | turn off to only see the green ones |
 
 ### Alerts

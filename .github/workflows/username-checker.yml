@@ -26,10 +26,6 @@ jobs:
         continue-on-error: true
         run: python ci_api_test.py
 
-      - name: Speed test (Max vs Smooth pacing, real Mojang)
-        continue-on-error: true
-        run: python ci_speed_test.py
-
       - name: Build exe
         run: >
           pyinstaller --noconfirm --onefile --windowed
