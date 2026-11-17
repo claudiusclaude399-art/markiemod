@@ -172,7 +172,6 @@ class App:
         root = self.root
         root.title(APP_NAME)
         root.configure(bg=WIN_BG)
-        root.minsize(820, 640)
         try:
             root.iconbitmap(resource("icon.ico"))
         except Exception:
@@ -1009,7 +1008,10 @@ def main():
         selftest = "alert"
     enable_dpi_awareness()
     root = tk.Tk()
-    root.geometry("960x760")
+    # fit small screens (e.g. 1366x768 laptops): leave room for the taskbar
+    height = max(600, min(760, root.winfo_screenheight() - 90))
+    root.geometry(f"960x{height}+{max(0, (root.winfo_screenwidth() - 960) // 2)}+10")
+    root.minsize(820, min(640, height))
     app = App(root, selftest=selftest)
     if selftest:
         app.v_letters.set(True)
