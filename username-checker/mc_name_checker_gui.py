@@ -654,6 +654,10 @@ class App:
 
     def _update_estimate(self):
         cs = self._charset()
+        st = self.v_start.get().strip().lower()
+        lo_, hi_ = self._int(self.v_min, 3), self._int(self.v_max, 4)
+        if st and (any(c not in cs for c in st) or not lo_ <= len(st) <= hi_):
+            self.v_start.set("")                # no longer fits the chosen length/characters
         if not cs:
             self.lbl_estimate.configure(text="Pick at least one kind of character.")
             return
@@ -684,10 +688,11 @@ class App:
         if start and not self.v_random.get():
             bad = [c for c in start if c not in cs]
             if bad or not (lo <= len(start) <= hi):
-                messagebox.showwarning(
-                    APP_NAME, f"'Start from' must be {lo}-{hi} characters long and only use the "
-                              f"characters you ticked.")
-                return
+                # left over from a run with other settings - start from the beginning instead
+                self._log(f"'Start from' {start} doesn't fit these settings - starting from the "
+                          f"beginning.", "info")
+                self.v_start.set("")
+                start = None
         else:
             start = None
 
