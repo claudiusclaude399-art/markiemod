@@ -18,4 +18,8 @@ for ep in core.default_endpoints():
     ok &= good
     print(f"[{ep.label}] {'OK ' if good else 'BAD'} taken={sorted(taken)}")
 
+one = {n: core.check_one(n) for n in ("Notch", SURELY_FREE[0])}
+print(f"[check_one] {one}")
+ok &= one == {"Notch": False, SURELY_FREE[0]: True}
+
 sys.exit(0 if ok else 1)

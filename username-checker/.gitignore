@@ -5,3 +5,5 @@ screenshot.png
 build/
 dist/
 *.spec
+checked_names.db*
+screenshot*.png

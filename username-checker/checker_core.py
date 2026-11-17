@@ -15,6 +15,7 @@ import http.client
 import itertools
 import json
 import random
+import re
 import ssl
 import string
 import threading
@@ -256,6 +257,20 @@ def lookup(endpoint, names):
         else:
             raise LookupFailed(f"HTTP {status}")
     return taken
+
+
+VALID_NAME = re.compile(r"^[A-Za-z0-9_]{3,16}$")
+
+
+def check_one(name, endpoints=None):
+    """Look up one name right now. True = available. Raises LookupFailed if no server answers."""
+    last = None
+    for ep in endpoints or default_endpoints():
+        try:
+            return name.lower() not in lookup(ep, [name])
+        except (RateLimited, LookupFailed) as e:
+            last = e
+    raise LookupFailed(f"no Mojang server answered ({type(last).__name__} {last or ''})".strip())
 
 
 # --------------------------------------------------------------------------- engine

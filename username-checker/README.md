@@ -21,7 +21,22 @@ Windows may show "Windows protected your PC" because the exe isn't signed: click
 | Parallel requests | how many lookups run at once (default 12) |
 | Show taken names | turn off to only see the green ones |
 
-Shortcuts: **F5** start, **Esc** stop. Select names in the right-hand list and press **Ctrl+C** to copy.
+### Short-name alerts
+
+| Option | What it does |
+|---|---|
+| Alert for free names up to **3** letters | highlights them and shows a green bar at the top (change 3 to any length) |
+| Windows notification + sound | a Windows notification pops up, it plays a sound and the taskbar button blinks |
+| Stop searching when one is found | stops as soon as one turns up, so you can go claim it |
+
+### Searching checked names
+
+Every name the program checks is remembered in `checked_names.db` (next to the program), including from earlier runs.
+In the **Search checked names** tab, type part of a name: `ab` finds `abc`, `xab9`, `ab_1`...
+Filter by **All / Available / Taken**. If you type a full name that hasn't been checked yet, press **Check now**
+(or Enter) to look it up straight away. **Forget all checked names** wipes the list.
+
+Shortcuts: **F5** start, **Esc** stop, **Ctrl+F** search. Select names and press **Ctrl+C** to copy.
 
 ## How it's fast
 
