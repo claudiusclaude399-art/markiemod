@@ -71,6 +71,8 @@ public final class BridgeMod implements ClientModInitializer {
     /** True once MinecraftMixin's hook on handleKeybinds has fired – then assist runs at the exact right moment. */
     public static boolean keybindHook = false;
 
+    static void pressUse() { KeyMappingAccessor a = (KeyMappingAccessor) Minecraft.getInstance().options.keyUse; a.macroforge$setClickCount(a.macroforge$getClickCount() + 1); }
+
     static void forceDown(KeyMapping k, boolean v) { ourSet = true; try { k.setDown(v); } finally { ourSet = false; } }
 
     /** Called by KeyMappingMixin for every setDown. Returns true to cancel it (key is blocked; just remember the real state). */
@@ -98,7 +100,9 @@ public final class BridgeMod implements ClientModInitializer {
         final List<String> exact = new ArrayList<>(), words = new ArrayList<>();
         double reach = 3.0; float charge = 0.95f;
         boolean needAttackHeld = true, groundHits = true, waitForCrit = true, airHits = true, stopSprint = true, skipPlayers, playersOnly, eatClicks = true;
-        int wtapTicks = 0, until = 0, next = 0, sprintStoppedAt = -100;
+        int wtapTicks = 0, until = 0, next = 0, sprintStoppedAt = -100, restoreSlot = -1, restoreAt = -1;
+        final Set<String> friends = new HashSet<>();
+        boolean skipTeam = true, skipPets = true, shieldBreak = true, waitHurt = true;
         boolean matches(Entity en) {
             if (exact.isEmpty() && words.isEmpty()) return true;
             String id = String.valueOf(BuiltInRegistries.ENTITY_TYPE.getKey(en.getType())).toLowerCase(Locale.ROOT);
@@ -118,6 +122,11 @@ public final class BridgeMod implements ClientModInitializer {
         if (tick > a.until) { assist = null; return; }
         Minecraft mc = Minecraft.getInstance();
         LocalPlayer p = mc.player;
+        if (a.restoreSlot >= 0 && tick >= a.restoreAt && p != null) {
+            KeyMappingAccessor rk = (KeyMappingAccessor) mc.options.keyHotbarSlots[a.restoreSlot];
+            rk.macroforge$setClickCount(rk.macroforge$getClickCount() + 1);
+            a.restoreSlot = -1;
+        }
         if (p == null || mc.screen != null || mc.gameMode == null || p.isSpectator() || p.isUsingItem()) return;
         KeyMapping atk = mc.options.keyAttack;
         if (a.needAttackHeld && !atk.isDown()) return;
@@ -126,11 +135,30 @@ public final class BridgeMod implements ClientModInitializer {
         if (!en.isAlive() || !a.matches(en)) return;
         boolean isPlayer = en instanceof Player;
         if ((a.skipPlayers && isPlayer) || (a.playersOnly && !isPlayer)) return;
+        if (!Aim.friendlyOk(p, en, a.friends, a.skipTeam, a.skipPets)) return;   // never friends, teammates, your pets
         if (Math.sqrt(en.getBoundingBox().distanceToSqr(p.getEyePosition())) > a.reach) return;
         KeyMappingAccessor acc = (KeyMappingAccessor) atk;
         // on a target we time every hit ourselves: swallow your own (untimed) clicks so they can't waste the charge
         if (a.needAttackHeld && a.eatClicks) acc.macroforge$setClickCount(0);
         if (tick < a.next) return;
+        // shield up? switch to an axe for one hit (disables the shield), then switch back
+        if (a.shieldBreak && en instanceof LivingEntity sl && sl.isUsingItem() && itemId(sl.getUseItem()).endsWith("shield") && sl.getTicksUsingItem() >= 5) {
+            int cur = selectedSlot(p), axe = -1;
+            if (itemId(p.getMainHandItem()).endsWith("_axe")) axe = cur;
+            else for (int i = 0; i < 9; i++) if (itemId(p.getInventory().getItem(i)).endsWith("_axe")) { axe = i; break; }
+            if (axe >= 0) {
+                if (axe != cur) {
+                    KeyMappingAccessor hk = (KeyMappingAccessor) mc.options.keyHotbarSlots[axe];
+                    hk.macroforge$setClickCount(hk.macroforge$getClickCount() + 1);   // handled just before the attack, same tick
+                    a.restoreSlot = cur; a.restoreAt = tick + 2;
+                }
+                acc.macroforge$setClickCount(acc.macroforge$getClickCount() + 1);
+                a.next = tick + 4;
+                assistHits++;
+                return;
+            }
+        }
+        if (a.waitHurt && en instanceof LivingEntity hl && hl.hurtTime > 0) return;   // still flashing red: a hit now would be wasted
         float s = p.getAttackStrengthScale(0.5f);
         if (s < a.charge) return;
         boolean air = !p.onGround() && !p.isInWater() && !p.isInLava() && !p.onClimbable() && !p.isPassenger() && !p.isFallFlying() && !p.getAbilities().flying;
@@ -171,6 +199,11 @@ public final class BridgeMod implements ClientModInitializer {
         a.playersOnly = bool(m, "players_only");
         a.wtapTicks = (int) Math.max(0, Math.min(40, num(m, "wtap_ticks", 0)));
         a.until = tick + (int) Math.max(5, Math.min(200, num(m, "ttl", 40)));
+        for (String f : str(m, "friends", "").split(",")) { String n = f.trim().toLowerCase(Locale.ROOT); if (!n.isEmpty()) a.friends.add(n); }
+        a.skipTeam = !m.has("skip_team") || bool(m, "skip_team");
+        a.skipPets = !m.has("skip_pets") || bool(m, "skip_pets");
+        a.shieldBreak = !m.has("shield_break") || bool(m, "shield_break");
+        a.waitHurt = !m.has("wait_hurt") || bool(m, "wait_hurt");
         return a;
     }
 
@@ -729,9 +762,13 @@ public final class BridgeMod implements ClientModInitializer {
             }
             case "release_all": releaseAll(); break;
             case "assist": {
-                if (!bool(m, "on")) { assist = null; break; }
+                if (!bool(m, "on")) {
+                    Assist o = assist; assist = null;
+                    if (o != null && o.restoreSlot >= 0) click(mc.options.keyHotbarSlots[o.restoreSlot], 1);   // give your weapon back
+                    break;
+                }
                 Assist old = assist; Assist a = parseAssist(m);
-                if (old != null) { a.next = old.next; a.sprintStoppedAt = old.sprintStoppedAt; }
+                if (old != null) { a.next = old.next; a.sprintStoppedAt = old.sprintStoppedAt; a.restoreSlot = old.restoreSlot; a.restoreAt = old.restoreAt; }
                 assist = a;
                 r.addProperty("hits", assistHits);
                 r.addProperty("hook", keybindHook);
