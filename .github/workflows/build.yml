@@ -4,6 +4,9 @@ on:
   push:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -37,3 +40,16 @@ jobs:
         with:
           name: macroforge-bridge
           path: build/libs/*.jar
+
+      # Also keep the finished jar in the repo (jar/ folder) for an easy direct download
+      - name: Commit jar to the branch
+        run: |
+          mkdir -p jar
+          rm -f jar/*.jar
+          cp build/libs/*.jar jar/
+          rm -f jar/*-sources.jar
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add jar
+          git commit -m "Built jar [skip ci]" || echo "no changes"
+          git push
