@@ -618,6 +618,12 @@ public final class BridgeMod implements ClientModInitializer {
                 r.add("entities", arr);
                 break;
             }
+            case "items": {
+                JsonArray arr = new JsonArray();
+                for (var item : BuiltInRegistries.ITEM) arr.add(String.valueOf(BuiltInRegistries.ITEM.getKey(item)));
+                r.add("items", arr);
+                break;
+            }
             case "keys": {
                 JsonArray arr = new JsonArray();
                 for (KeyMapping k : mc.options.keyMappings) arr.add(k.getName());
