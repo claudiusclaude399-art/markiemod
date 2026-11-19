@@ -3,6 +3,6 @@
   "minVersion": "0.8",
   "package": "com.macroforge.bridge.mixin",
   "compatibilityLevel": "JAVA_21",
-  "client": ["KeyMappingAccessor", "KeyMappingMixin", "MinecraftMixin"],
+  "client": ["KeyMappingAccessor", "KeyMappingMixin", "MinecraftMixin", "GameRendererMixin"],
   "injectors": { "defaultRequire": 1 }
 }

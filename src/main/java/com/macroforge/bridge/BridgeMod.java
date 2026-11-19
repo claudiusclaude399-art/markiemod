@@ -173,9 +173,7 @@ public final class BridgeMod implements ClientModInitializer {
         a.until = tick + (int) Math.max(5, Math.min(200, num(m, "ttl", 40)));
         return a;
     }
-    private static LookAnim look;
 
-    private static final class LookAnim { float fromYaw, fromPitch, toYaw, toPitch; int total, done; }
 
     @Override
     public void onInitializeClient() {
@@ -243,14 +241,7 @@ public final class BridgeMod implements ClientModInitializer {
         }
 
         LocalPlayer p = mc.player;
-        if (look != null && p != null) {
-            look.done++;
-            float t = Math.min(1f, look.done / (float) look.total);
-            float s = t * t * (3 - 2 * t); // smoothstep
-            p.setYRot(look.fromYaw + (look.toYaw - look.fromYaw) * s);
-            p.setXRot(look.fromPitch + (look.toPitch - look.fromPitch) * s);
-            if (t >= 1f) look = null;
-        }
+        Aim.tick(mc, tick);   // re-pick aim targets every tick (turning happens every frame)
 
         if (server == null || !server.isConnected()) return;
         if (p == null) { if (tick % 20 == 0) sendStateIfChanged(mc); return; }
@@ -542,6 +533,7 @@ public final class BridgeMod implements ClientModInitializer {
             s.addProperty("elytra_equipped", mv.chestItem.endsWith("elytra"));
 
             Crosshair ch = crosshair(mc, p);
+            Aim.addState(s);
             s.addProperty("looking_at", ch.id);
             s.addProperty("looking_type", ch.type);
             s.addProperty("looking_name", ch.name);
@@ -600,13 +592,14 @@ public final class BridgeMod implements ClientModInitializer {
     }
 
     private static double round(double d) { return Math.round(d * 100.0) / 100.0; }
+    static float wrapDeg(float yaw) { return wrap(yaw); }
     private static float wrap(float yaw) { yaw %= 360f; if (yaw >= 180f) yaw -= 360f; if (yaw < -180f) yaw += 360f; return yaw; }
 
     // ------------------------------------------------------------------ commands (run on the client thread)
 
-    private static String str(JsonObject o, String k, String def) { return o.has(k) && !o.get(k).isJsonNull() ? o.get(k).getAsString() : def; }
-    private static double num(JsonObject o, String k, double def) { try { return o.has(k) ? o.get(k).getAsDouble() : def; } catch (Exception e) { return def; } }
-    private static boolean bool(JsonObject o, String k) { try { return o.has(k) && o.get(k).getAsBoolean(); } catch (Exception e) { return false; } }
+    static String str(JsonObject o, String k, String def) { return o.has(k) && !o.get(k).isJsonNull() ? o.get(k).getAsString() : def; }
+    static double num(JsonObject o, String k, double def) { try { return o.has(k) ? o.get(k).getAsDouble() : def; } catch (Exception e) { return def; } }
+    static boolean bool(JsonObject o, String k) { try { return o.has(k) && o.get(k).getAsBoolean(); } catch (Exception e) { return false; } }
 
     static KeyMapping findKey(Minecraft mc, String name) {
         if (name == null || name.isEmpty()) return null;
@@ -639,6 +632,7 @@ public final class BridgeMod implements ClientModInitializer {
         blockedUntil.clear();
         realDown.clear();
         assist = null;
+        Aim.cur = null;
     }
 
     private static void onCommand(JsonObject m) {
@@ -698,25 +692,22 @@ public final class BridgeMod implements ClientModInitializer {
             }
             case "look": case "look_at": {
                 if (p == null) { ok = false; err = "not in a world"; break; }
-                float yaw, pitch;
-                if (op.equals("look_at")) {
-                    Vec3 eye = p.getEyePosition();
-                    double dx = num(m, "x", 0) - eye.x, dy = num(m, "y", 0) - eye.y, dz = num(m, "z", 0) - eye.z;
-                    yaw = (float) (Math.toDegrees(Math.atan2(dz, dx)) - 90.0);
-                    pitch = (float) -Math.toDegrees(Math.atan2(dy, Math.sqrt(dx * dx + dz * dz)));
-                } else {
-                    boolean rel = bool(m, "relative");
-                    yaw = (float) num(m, "yaw", 0) + (rel ? p.getYRot() : 0);
-                    pitch = (float) num(m, "pitch", 0) + (rel ? p.getXRot() : 0);
-                }
-                pitch = Math.max(-90f, Math.min(90f, pitch));
-                LookAnim a = new LookAnim();
-                a.fromYaw = p.getYRot(); a.fromPitch = p.getXRot();
-                // take the short way round
-                float d = wrap(yaw - a.fromYaw);
-                a.toYaw = a.fromYaw + d; a.toPitch = pitch;
-                a.total = Math.max(1, (int) Math.round(num(m, "ms", 0) / 50.0));
-                look = a;
+                JsonObject q = m.deepCopy();
+                q.addProperty("target", op.equals("look_at") ? "pos" : "dir");
+                if (!q.has("ms") || num(q, "ms", 0) <= 0) q.addProperty("speed", 0);   // no duration = snap
+                Aim.command(q, mc, tick);
+                break;
+            }
+            case "aim": {
+                JsonObject res = Aim.command(m, mc, tick);
+                for (Map.Entry<String, com.google.gson.JsonElement> e : res.entrySet()) if (!e.getKey().equals("error")) r.add(e.getKey(), e.getValue());
+                if (res.has("error")) { ok = false; err = res.get("error").getAsString(); }
+                break;
+            }
+            case "blocks": {
+                JsonArray arr = new JsonArray();
+                for (var bl : BuiltInRegistries.BLOCK) arr.add(String.valueOf(BuiltInRegistries.BLOCK.getKey(bl)));
+                r.add("blocks", arr);
                 break;
             }
             case "message": {
