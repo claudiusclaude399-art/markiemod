@@ -77,6 +77,7 @@ public final class BridgeMod implements ClientModInitializer {
 
     /** Called by KeyMappingMixin for every setDown. Returns true to cancel it (key is blocked; just remember the real state). */
     public static boolean interceptSetDown(KeyMapping k, boolean down) {
+        if (!ourSet) { try { Hud.onKey(k, down, k.isDown()); } catch (Throwable ignored) {} }   // CPS counter (real presses only)
         if (ourSet || !blockedUntil.containsKey(k)) return false;
         realDown.put(k, down);
         return true;
@@ -113,6 +114,7 @@ public final class BridgeMod implements ClientModInitializer {
         }
     }
     static Assist assist;
+    static int combo() { return combo; }
     public static int assistHits = 0;
 
     /** Called right before handleKeybinds (via mixin) or at the start of the tick (fallback). */
@@ -213,6 +215,8 @@ public final class BridgeMod implements ClientModInitializer {
         server = new BridgeServer(BridgeMod::onCommand);
         server.start();
 
+        net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry.addLast(
+                net.minecraft.resources.Identifier.fromNamespaceAndPath("macroforge_bridge", "hud"), Hud::render);
         ClientTickEvents.START_CLIENT_TICK.register(mc -> {
             if (server != null) server.drain();   // commands that arrived since last tick run BEFORE this tick's input handling
             enforceBlocked();
@@ -227,6 +231,7 @@ public final class BridgeMod implements ClientModInitializer {
         AttackEntityCallback.EVENT.register((player, world, hand, entity, hit) -> {
             if (world.isClientSide() && player == Minecraft.getInstance().player) {
                 hits++; combo++;
+                Hud.onAttack((LocalPlayer) player, entity);
                 JsonObject e = eventObj("attack", String.valueOf(BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType())) + " " + entity.getName().getString());
                 e.addProperty("id", String.valueOf(BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType())));
                 e.addProperty("name", entity.getName().getString());
@@ -453,7 +458,7 @@ public final class BridgeMod implements ClientModInitializer {
 
     private static int countTotem(ItemStack s) { return !s.isEmpty() && itemId(s).endsWith("totem_of_undying") ? s.getCount() : 0; }
 
-    static String itemId(ItemStack s) {
+    public static String itemId(ItemStack s) {
         if (s == null || s.isEmpty()) return "";
         return String.valueOf(BuiltInRegistries.ITEM.getKey(s.getItem()));
     }
@@ -737,6 +742,8 @@ public final class BridgeMod implements ClientModInitializer {
                 if (res.has("error")) { ok = false; err = res.get("error").getAsString(); }
                 break;
             }
+            case "hud": Hud.config(m); break;
+            case "hud_text": Hud.text(m); break;
             case "blocks": {
                 JsonArray arr = new JsonArray();
                 for (var bl : BuiltInRegistries.BLOCK) arr.add(String.valueOf(BuiltInRegistries.BLOCK.getKey(bl)));
