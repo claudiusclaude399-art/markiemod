@@ -1,0 +1,8 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.macroforge.bridge.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "client": ["KeyMappingAccessor"],
+  "injectors": { "defaultRequire": 1 }
+}

@@ -1,0 +1,39 @@
+name: Build MacroForge Bridge
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # If the files were uploaded "flat" (no folders), sort them into the Gradle layout.
+      - name: Sort flat upload into folders
+        run: |
+          if [ ! -d src ]; then
+            mkdir -p src/main/java/com/macroforge/bridge/mixin src/main/resources
+            [ -f KeyMappingAccessor.java ] && mv KeyMappingAccessor.java src/main/java/com/macroforge/bridge/mixin/
+            for f in *.java; do [ -f "$f" ] && mv "$f" src/main/java/com/macroforge/bridge/; done
+            for f in fabric.mod.json macroforge_bridge.mixins.json; do [ -f "$f" ] && mv "$f" src/main/resources/; done
+          fi
+          find src -type f
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 9.2.0
+
+      - name: Build
+        run: gradle build --no-daemon --stacktrace
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macroforge-bridge
+          path: build/libs/*.jar
