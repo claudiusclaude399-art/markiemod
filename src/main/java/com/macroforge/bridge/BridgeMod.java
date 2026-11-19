@@ -65,6 +65,114 @@ public final class BridgeMod implements ClientModInitializer {
     private static final Set<KeyMapping> held = new HashSet<>();
     /** Keys forced UP (e.g. W-tap) until the app un-blocks them, or until the safety tick limit. */
     private static final Map<KeyMapping, Integer> blockedUntil = new HashMap<>();
+    /** While a key is blocked: what the REAL key is doing (tracked by KeyMappingMixin), so we can give it back correctly. */
+    private static final Map<KeyMapping, Boolean> realDown = new HashMap<>();
+    private static boolean ourSet = false;
+    /** True once MinecraftMixin's hook on handleKeybinds has fired – then assist runs at the exact right moment. */
+    public static boolean keybindHook = false;
+
+    static void forceDown(KeyMapping k, boolean v) { ourSet = true; try { k.setDown(v); } finally { ourSet = false; } }
+
+    /** Called by KeyMappingMixin for every setDown. Returns true to cancel it (key is blocked; just remember the real state). */
+    public static boolean interceptSetDown(KeyMapping k, boolean down) {
+        if (ourSet || !blockedUntil.containsKey(k)) return false;
+        realDown.put(k, down);
+        return true;
+    }
+
+    static void block(KeyMapping k, int ticks) {
+        if (!blockedUntil.containsKey(k)) realDown.put(k, k.isDown() || held.contains(k));
+        held.remove(k);
+        forceDown(k, false);
+        blockedUntil.put(k, tick + Math.max(1, Math.min(200, ticks)));
+    }
+
+    static void unblock(KeyMapping k, Boolean override) {
+        if (blockedUntil.remove(k) == null && override == null) return;
+        Boolean r = realDown.remove(k);
+        forceDown(k, override != null ? override : (r != null && r));
+    }
+
+    // ---------------- combat assist: runs INSIDE the game tick, right before Minecraft handles the attack key ----------------
+    static final class Assist {
+        final List<String> exact = new ArrayList<>(), words = new ArrayList<>();
+        double reach = 3.0; float charge = 0.95f;
+        boolean needAttackHeld = true, groundHits = true, waitForCrit = true, airHits = true, stopSprint = true, skipPlayers, playersOnly, eatClicks = true;
+        int wtapTicks = 0, until = 0, next = 0, sprintStoppedAt = -100;
+        boolean matches(Entity en) {
+            if (exact.isEmpty() && words.isEmpty()) return true;
+            String id = String.valueOf(BuiltInRegistries.ENTITY_TYPE.getKey(en.getType())).toLowerCase(Locale.ROOT);
+            if (exact.contains(id)) return true;
+            String name = en.getName().getString().toLowerCase(Locale.ROOT);
+            for (String w : words) if (id.contains(w) || name.contains(w)) return true;
+            return false;
+        }
+    }
+    static Assist assist;
+    public static int assistHits = 0;
+
+    /** Called right before handleKeybinds (via mixin) or at the start of the tick (fallback). */
+    public static void runAssist() {
+        Assist a = assist;
+        if (a == null) return;
+        if (tick > a.until) { assist = null; return; }
+        Minecraft mc = Minecraft.getInstance();
+        LocalPlayer p = mc.player;
+        if (p == null || mc.screen != null || mc.gameMode == null || p.isSpectator() || p.isUsingItem()) return;
+        KeyMapping atk = mc.options.keyAttack;
+        if (a.needAttackHeld && !atk.isDown()) return;
+        if (!(mc.hitResult instanceof EntityHitResult eh)) return;
+        Entity en = eh.getEntity();
+        if (!en.isAlive() || !a.matches(en)) return;
+        boolean isPlayer = en instanceof Player;
+        if ((a.skipPlayers && isPlayer) || (a.playersOnly && !isPlayer)) return;
+        if (Math.sqrt(en.getBoundingBox().distanceToSqr(p.getEyePosition())) > a.reach) return;
+        KeyMappingAccessor acc = (KeyMappingAccessor) atk;
+        // on a target we time every hit ourselves: swallow your own (untimed) clicks so they can't waste the charge
+        if (a.needAttackHeld && a.eatClicks) acc.macroforge$setClickCount(0);
+        if (tick < a.next) return;
+        float s = p.getAttackStrengthScale(0.5f);
+        if (s < a.charge) return;
+        boolean air = !p.onGround() && !p.isInWater() && !p.isInLava() && !p.onClimbable() && !p.isPassenger() && !p.isFallFlying() && !p.getAbilities().flying;
+        if (air) {
+            boolean falling = p.getDeltaMovement().y < 0 && p.fallDistance > 0;
+            if (a.waitForCrit && !falling) return;            // still going up: wait for the fall
+            if (!a.waitForCrit && !a.airHits) return;
+            if (a.waitForCrit && a.stopSprint && p.isSprinting()) {
+                // sprinting cancels crits: stop sprinting this tick (the server hears it first), hit next tick
+                p.setSprinting(false);
+                block(mc.options.keySprint, 3);
+                a.sprintStoppedAt = tick;
+                return;
+            }
+        } else if (!a.groundHits) return;
+        acc.macroforge$setClickCount(acc.macroforge$getClickCount() + 1);   // Minecraft swings right after this, same tick
+        a.next = tick + 2;
+        assistHits++;
+        if (a.wtapTicks > 0 && (mc.options.keyUp.isDown() || held.contains(mc.options.keyUp))) block(mc.options.keyUp, a.wtapTicks);
+    }
+
+    static Assist parseAssist(JsonObject m) {
+        Assist a = new Assist();
+        for (String e : str(m, "entities", "").split(",")) {
+            String t = e.trim().toLowerCase(Locale.ROOT);
+            if (t.isEmpty()) continue;
+            if (t.contains(":")) a.exact.add(t); else a.words.add(t);
+        }
+        a.reach = num(m, "reach", 3.0);
+        a.charge = (float) Math.max(0.05, Math.min(1.0, num(m, "charge", 0.95)));
+        a.needAttackHeld = !m.has("need_attack_held") || bool(m, "need_attack_held");
+        a.groundHits = !m.has("ground_hits") || bool(m, "ground_hits");
+        a.waitForCrit = !m.has("wait_for_crit") || bool(m, "wait_for_crit");
+        a.airHits = !m.has("air_hits") || bool(m, "air_hits");
+        a.stopSprint = !m.has("stop_sprint") || bool(m, "stop_sprint");
+        a.eatClicks = !m.has("eat_clicks") || bool(m, "eat_clicks");
+        a.skipPlayers = bool(m, "skip_players");
+        a.playersOnly = bool(m, "players_only");
+        a.wtapTicks = (int) Math.max(0, Math.min(40, num(m, "wtap_ticks", 0)));
+        a.until = tick + (int) Math.max(5, Math.min(200, num(m, "ttl", 40)));
+        return a;
+    }
     private static LookAnim look;
 
     private static final class LookAnim { float fromYaw, fromPitch, toYaw, toPitch; int total, done; }
@@ -74,7 +182,11 @@ public final class BridgeMod implements ClientModInitializer {
         server = new BridgeServer(BridgeMod::onCommand);
         server.start();
 
-        ClientTickEvents.START_CLIENT_TICK.register(mc -> enforceBlocked());
+        ClientTickEvents.START_CLIENT_TICK.register(mc -> {
+            if (server != null) server.drain();   // commands that arrived since last tick run BEFORE this tick's input handling
+            enforceBlocked();
+            if (!keybindHook) runAssist();
+        });
         ClientTickEvents.END_CLIENT_TICK.register(BridgeMod::onTick);
         ClientReceiveMessageEvents.GAME.register((message, overlay) -> event(overlay ? "actionbar" : "chat", message.getString()));
         ClientReceiveMessageEvents.CHAT.register((message, signed, sender, params, time) -> event("chat", message.getString()));
@@ -120,13 +232,13 @@ public final class BridgeMod implements ClientModInitializer {
         if (server != null) server.drain();
 
         // keep "held" keys pressed even if Minecraft re-polls the keyboard
-        for (KeyMapping k : held) k.setDown(true);
+        for (KeyMapping k : held) forceDown(k, true);
         enforceBlocked();
         if (!releaseAt.isEmpty()) {
             Iterator<Map.Entry<KeyMapping, Integer>> it = releaseAt.entrySet().iterator();
             while (it.hasNext()) {
                 Map.Entry<KeyMapping, Integer> e = it.next();
-                if (tick >= e.getValue()) { if (!held.contains(e.getKey())) e.getKey().setDown(false); it.remove(); }
+                if (tick >= e.getValue()) { if (!held.contains(e.getKey())) forceDown(e.getKey(), false); it.remove(); }
             }
         }
 
@@ -223,7 +335,7 @@ public final class BridgeMod implements ClientModInitializer {
             sendStateIfChanged(mc);
         }
 
-        if (tick % 4 == 0) sendStateIfChanged(mc);
+        sendStateIfChanged(mc);   // every tick (only sent when something changed)
     }
 
     static final class Move {
@@ -249,7 +361,7 @@ public final class BridgeMod implements ClientModInitializer {
         m.speed = Math.sqrt(v.x * v.x + v.z * v.z) * 20.0; // blocks per second
         m.moving = m.speed > 0.2 || Math.abs(v.y) > 0.1 && !m.onGround;
         boolean airborne = !m.onGround && !m.inWater && !m.inLava && !m.climbing && !m.flying && !m.riding && !m.gliding;
-        m.falling = airborne && v.y < -0.1;
+        m.falling = airborne && v.y < 0 && p.fallDistance > 0;   // true from the very first tick of the fall (crit window)
         m.rising = airborne && v.y > 0.05;
         // distance to the first non-air block below
         BlockPos feet = BlockPos.containing(p.getX(), p.getY(), p.getZ());
@@ -285,7 +397,7 @@ public final class BridgeMod implements ClientModInitializer {
             c.type = "entity";
             c.id = String.valueOf(BuiltInRegistries.ENTITY_TYPE.getKey(en.getType()));
             c.name = en.getName().getString();
-            c.distance = p.distanceTo(en);
+            c.distance = Math.sqrt(en.getBoundingBox().distanceToSqr(p.getEyePosition()));   // same as attack reach
             c.isPlayer = en instanceof Player;
             c.hostile = en instanceof Enemy;
             c.entityId = en.getId();
@@ -506,7 +618,7 @@ public final class BridgeMod implements ClientModInitializer {
     private static void click(KeyMapping k, int ticks) {
         KeyMappingAccessor a = (KeyMappingAccessor) k;
         a.macroforge$setClickCount(a.macroforge$getClickCount() + 1);
-        k.setDown(true);
+        forceDown(k, true);
         releaseAt.put(k, tick + Math.max(1, ticks));
     }
 
@@ -516,15 +628,17 @@ public final class BridgeMod implements ClientModInitializer {
         Iterator<Map.Entry<KeyMapping, Integer>> it = blockedUntil.entrySet().iterator();
         while (it.hasNext()) {
             Map.Entry<KeyMapping, Integer> e = it.next();
-            e.getKey().setDown(false);
-            if (tick >= e.getValue()) it.remove();
+            if (tick >= e.getValue()) { it.remove(); Boolean r = realDown.remove(e.getKey()); forceDown(e.getKey(), r != null && r); }
+            else forceDown(e.getKey(), false);
         }
     }
 
     private static void releaseAll() {
-        for (KeyMapping k : held) k.setDown(false);
+        for (KeyMapping k : held) forceDown(k, false);
         held.clear();
         blockedUntil.clear();
+        realDown.clear();
+        assist = null;
     }
 
     private static void onCommand(JsonObject m) {
@@ -549,10 +663,10 @@ public final class BridgeMod implements ClientModInitializer {
                 KeyMapping k = findKey(mc, str(m, "name", ""));
                 if (k == null) { ok = false; err = "unknown key binding: " + str(m, "name", ""); break; }
                 String mode = str(m, "mode", "press");
-                if (mode.equals("down")) { held.add(k); k.setDown(true); KeyMappingAccessor a = (KeyMappingAccessor) k; a.macroforge$setClickCount(a.macroforge$getClickCount() + 1); }
-                else if (mode.equals("up")) { held.remove(k); k.setDown(false); }
-                else if (mode.equals("block")) { held.remove(k); k.setDown(false); blockedUntil.put(k, tick + Math.max(1, Math.min(200, (int) num(m, "ticks", 40)))); }
-                else if (mode.equals("unblock")) { blockedUntil.remove(k); k.setDown(bool(m, "down")); }
+                if (mode.equals("down")) { held.add(k); forceDown(k, true); KeyMappingAccessor a = (KeyMappingAccessor) k; a.macroforge$setClickCount(a.macroforge$getClickCount() + 1); }
+                else if (mode.equals("up")) { held.remove(k); forceDown(k, false); }
+                else if (mode.equals("block")) block(k, (int) num(m, "ticks", 40));
+                else if (mode.equals("unblock")) unblock(k, null);   // the mod tracks the real key itself
                 else click(k, (int) num(m, "ticks", 1));
                 break;
             }
@@ -623,6 +737,15 @@ public final class BridgeMod implements ClientModInitializer {
                 break;
             }
             case "release_all": releaseAll(); break;
+            case "assist": {
+                if (!bool(m, "on")) { assist = null; break; }
+                Assist old = assist; Assist a = parseAssist(m);
+                if (old != null) { a.next = old.next; a.sprintStoppedAt = old.sprintStoppedAt; }
+                assist = a;
+                r.addProperty("hits", assistHits);
+                r.addProperty("hook", keybindHook);
+                break;
+            }
             case "reset_stats": hits = 0; combo = 0; break;
             case "state": lastStateJson = ""; sendStateIfChanged(mc); break;
             case "entities": {
