@@ -63,6 +63,8 @@ public final class BridgeMod implements ClientModInitializer {
     private static int airTicks;
     private static final Map<KeyMapping, Integer> releaseAt = new HashMap<>();
     private static final Set<KeyMapping> held = new HashSet<>();
+    /** Keys forced UP (e.g. W-tap) until the app un-blocks them, or until the safety tick limit. */
+    private static final Map<KeyMapping, Integer> blockedUntil = new HashMap<>();
     private static LookAnim look;
 
     private static final class LookAnim { float fromYaw, fromPitch, toYaw, toPitch; int total, done; }
@@ -72,6 +74,7 @@ public final class BridgeMod implements ClientModInitializer {
         server = new BridgeServer(BridgeMod::onCommand);
         server.start();
 
+        ClientTickEvents.START_CLIENT_TICK.register(mc -> enforceBlocked());
         ClientTickEvents.END_CLIENT_TICK.register(BridgeMod::onTick);
         ClientReceiveMessageEvents.GAME.register((message, overlay) -> event(overlay ? "actionbar" : "chat", message.getString()));
         ClientReceiveMessageEvents.CHAT.register((message, signed, sender, params, time) -> event("chat", message.getString()));
@@ -118,6 +121,7 @@ public final class BridgeMod implements ClientModInitializer {
 
         // keep "held" keys pressed even if Minecraft re-polls the keyboard
         for (KeyMapping k : held) k.setDown(true);
+        enforceBlocked();
         if (!releaseAt.isEmpty()) {
             Iterator<Map.Entry<KeyMapping, Integer>> it = releaseAt.entrySet().iterator();
             while (it.hasNext()) {
@@ -506,9 +510,21 @@ public final class BridgeMod implements ClientModInitializer {
         releaseAt.put(k, tick + Math.max(1, ticks));
     }
 
+    /** Keep blocked keys up even while the real key is still held (key-repeat events would press it again). */
+    private static void enforceBlocked() {
+        if (blockedUntil.isEmpty()) return;
+        Iterator<Map.Entry<KeyMapping, Integer>> it = blockedUntil.entrySet().iterator();
+        while (it.hasNext()) {
+            Map.Entry<KeyMapping, Integer> e = it.next();
+            e.getKey().setDown(false);
+            if (tick >= e.getValue()) it.remove();
+        }
+    }
+
     private static void releaseAll() {
         for (KeyMapping k : held) k.setDown(false);
         held.clear();
+        blockedUntil.clear();
     }
 
     private static void onCommand(JsonObject m) {
@@ -535,6 +551,8 @@ public final class BridgeMod implements ClientModInitializer {
                 String mode = str(m, "mode", "press");
                 if (mode.equals("down")) { held.add(k); k.setDown(true); KeyMappingAccessor a = (KeyMappingAccessor) k; a.macroforge$setClickCount(a.macroforge$getClickCount() + 1); }
                 else if (mode.equals("up")) { held.remove(k); k.setDown(false); }
+                else if (mode.equals("block")) { held.remove(k); k.setDown(false); blockedUntil.put(k, tick + Math.max(1, Math.min(200, (int) num(m, "ticks", 40)))); }
+                else if (mode.equals("unblock")) { blockedUntil.remove(k); k.setDown(bool(m, "down")); }
                 else click(k, (int) num(m, "ticks", 1));
                 break;
             }
