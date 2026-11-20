@@ -71,6 +71,16 @@ public final class BridgeMod implements ClientModInitializer {
     /** True once MinecraftMixin's hook on handleKeybinds has fired – then assist runs at the exact right moment. */
     public static boolean keybindHook = false;
 
+    public static int selectedSlotPublic(LocalPlayer p) { return selectedSlot(p); }
+    public static void pressKey(KeyMapping k) { KeyMappingAccessor a = (KeyMappingAccessor) k; a.macroforge$setClickCount(a.macroforge$getClickCount() + 1); }
+    /** Hold (or let go of) a game key until told otherwise – kept down every tick like the "down" key mode. */
+    public static void holdKey(KeyMapping k, boolean on) {
+        if (on) { held.add(k); forceDown(k, true); pressKey(k); }
+        else if (held.remove(k)) forceDown(k, false);
+    }
+    public static JsonObject eventObjPublic(String name, String text) { return eventObj(name, text); }
+    public static void sendPublic(JsonObject o) { send(o); }
+
     static void pressUse() { KeyMappingAccessor a = (KeyMappingAccessor) Minecraft.getInstance().options.keyUse; a.macroforge$setClickCount(a.macroforge$getClickCount() + 1); }
 
     static void forceDown(KeyMapping k, boolean v) { ourSet = true; try { k.setDown(v); } finally { ourSet = false; } }
@@ -103,7 +113,8 @@ public final class BridgeMod implements ClientModInitializer {
         boolean needAttackHeld = true, groundHits = true, waitForCrit = true, airHits = true, stopSprint = true, skipPlayers, playersOnly, eatClicks = true;
         int wtapTicks = 0, until = 0, next = 0, sprintStoppedAt = -100, restoreSlot = -1, restoreAt = -1;
         final Set<String> friends = new HashSet<>();
-        boolean skipTeam = true, skipPets = true, shieldBreak = true, waitHurt = true;
+        boolean skipTeam = true, skipPets = true, shieldBreak = true, waitHurt = true, shieldBlock = false, blocking = false;
+        int blockTick = -1;
         boolean matches(Entity en) {
             if (exact.isEmpty() && words.isEmpty()) return true;
             String id = String.valueOf(BuiltInRegistries.ENTITY_TYPE.getKey(en.getType())).toLowerCase(Locale.ROOT);
@@ -129,7 +140,7 @@ public final class BridgeMod implements ClientModInitializer {
             rk.macroforge$setClickCount(rk.macroforge$getClickCount() + 1);
             a.restoreSlot = -1;
         }
-        if (p == null || mc.screen != null || mc.gameMode == null || p.isSpectator() || p.isUsingItem()) return;
+        if (p == null || mc.screen != null || mc.gameMode == null || p.isSpectator() || (p.isUsingItem() && !a.blocking)) return;
         KeyMapping atk = mc.options.keyAttack;
         if (a.needAttackHeld && !atk.isDown()) return;
         if (!(mc.hitResult instanceof EntityHitResult eh)) return;
@@ -160,8 +171,15 @@ public final class BridgeMod implements ClientModInitializer {
                 return;
             }
         }
-        if (a.waitHurt && en instanceof LivingEntity hl && hl.hurtTime > 0) return;   // still flashing red: a hit now would be wasted
         float s = p.getAttackStrengthScale(0.5f);
+        // shield up between hits: block while the charge refills, lower it ~2 ticks before the next hit
+        if (a.shieldBlock && itemId(p.getOffhandItem()).endsWith("shield") && !isUsable(p.getMainHandItem())) {
+            boolean want = s < a.charge - 0.15f;
+            if (want != a.blocking) { holdKey(mc.options.keyUse, want); a.blocking = want; }
+            a.blockTick = tick;
+            if (a.blocking) return;
+        }
+        if (a.waitHurt && en instanceof LivingEntity hl && hl.hurtTime > 0) return;   // still flashing red: a hit now would be wasted
         if (s < a.charge) return;
         boolean air = !p.onGround() && !p.isInWater() && !p.isInLava() && !p.onClimbable() && !p.isPassenger() && !p.isFallFlying() && !p.getAbilities().flying;
         if (air) {
@@ -180,6 +198,11 @@ public final class BridgeMod implements ClientModInitializer {
         a.next = tick + 2;
         assistHits++;
         if (a.wtapTicks > 0 && (mc.options.keyUp.isDown() || held.contains(mc.options.keyUp))) block(mc.options.keyUp, a.wtapTicks);
+    }
+
+    static boolean isUsable(ItemStack st) {
+        String id = itemId(st);
+        return !st.isEmpty() && (st.has(net.minecraft.core.component.DataComponents.FOOD) || id.endsWith("bow") || id.endsWith("crossbow") || id.endsWith("trident") || id.endsWith("potion") || id.endsWith("shield"));
     }
 
     static Assist parseAssist(JsonObject m) {
@@ -206,6 +229,7 @@ public final class BridgeMod implements ClientModInitializer {
         a.skipPets = !m.has("skip_pets") || bool(m, "skip_pets");
         a.shieldBreak = !m.has("shield_break") || bool(m, "shield_break");
         a.waitHurt = !m.has("wait_hurt") || bool(m, "wait_hurt");
+        a.shieldBlock = bool(m, "shield_block");
         return a;
     }
 
@@ -226,7 +250,7 @@ public final class BridgeMod implements ClientModInitializer {
         ClientReceiveMessageEvents.GAME.register((message, overlay) -> event(overlay ? "actionbar" : "chat", message.getString()));
         ClientReceiveMessageEvents.CHAT.register((message, signed, sender, params, time) -> event("chat", message.getString()));
         ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> event("join", serverName(client)));
-        ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> { releaseAll(); event("leave", ""); });
+        ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> { releaseAll(); Pvp.reset(); event("leave", ""); });
         // fires on the client when *you* hit an entity
         AttackEntityCallback.EVENT.register((player, world, hand, entity, hit) -> {
             if (world.isClientSide() && player == Minecraft.getInstance().player) {
@@ -280,6 +304,9 @@ public final class BridgeMod implements ClientModInitializer {
 
         LocalPlayer p = mc.player;
         Aim.tick(mc, tick);   // re-pick aim targets every tick (turning happens every frame)
+        try { Pvp.tick(mc, tick); } catch (Throwable t) { /* never break the game loop */ }
+        Assist as = assist;   // shield raised by auto-hit but no longer on a target (looked away / let go): lower it
+        if (as != null && as.blocking && as.blockTick < tick - 1) { holdKey(mc.options.keyUse, false); as.blocking = false; }
 
         if (server == null || !server.isConnected()) return;
         if (p == null) { if (tick % 20 == 0) sendStateIfChanged(mc); return; }
@@ -743,6 +770,8 @@ public final class BridgeMod implements ClientModInitializer {
                 break;
             }
             case "hud": Hud.config(m); break;
+            case "pvp": Pvp.config(m, tick); break;
+            case "reset_pops": Pvp.pops.clear(); break;
             case "hud_text": Hud.text(m); break;
             case "blocks": {
                 JsonArray arr = new JsonArray();
@@ -771,11 +800,12 @@ public final class BridgeMod implements ClientModInitializer {
             case "assist": {
                 if (!bool(m, "on")) {
                     Assist o = assist; assist = null;
+                    if (o != null && o.blocking) holdKey(mc.options.keyUse, false);
                     if (o != null && o.restoreSlot >= 0) click(mc.options.keyHotbarSlots[o.restoreSlot], 1);   // give your weapon back
                     break;
                 }
                 Assist old = assist; Assist a = parseAssist(m);
-                if (old != null) { a.next = old.next; a.sprintStoppedAt = old.sprintStoppedAt; a.restoreSlot = old.restoreSlot; a.restoreAt = old.restoreAt; }
+                if (old != null) { a.next = old.next; a.sprintStoppedAt = old.sprintStoppedAt; a.restoreSlot = old.restoreSlot; a.restoreAt = old.restoreAt; a.blocking = old.blocking && a.shieldBlock; if (old.blocking && !a.shieldBlock) holdKey(mc.options.keyUse, false); }
                 assist = a;
                 r.addProperty("hits", assistHits);
                 r.addProperty("hook", keybindHook);

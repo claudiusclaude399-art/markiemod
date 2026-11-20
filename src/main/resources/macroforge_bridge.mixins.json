@@ -3,6 +3,6 @@
   "minVersion": "0.8",
   "package": "com.macroforge.bridge.mixin",
   "compatibilityLevel": "JAVA_21",
-  "client": ["KeyMappingAccessor", "KeyMappingMixin", "MinecraftMixin", "GameRendererMixin", "GlowMixin"],
+  "client": ["KeyMappingAccessor", "KeyMappingMixin", "MinecraftMixin", "GameRendererMixin", "GlowMixin", "EntityEventMixin"],
   "injectors": { "defaultRequire": 1 }
 }

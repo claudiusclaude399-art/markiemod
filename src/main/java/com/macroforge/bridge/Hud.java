@@ -17,7 +17,7 @@ import java.util.*;
 public final class Hud {
     private Hud() {}
 
-    static boolean enabled = true, showStatus = true, showTarget = true, showStats = true, glow = true;
+    static boolean enabled = true, showStatus = true, showTarget = true, showStats = true, glow = true, showInv = true;
     static String corner = "tl";
     static final ArrayDeque<Long> leftClicks = new ArrayDeque<>(), rightClicks = new ArrayDeque<>();
     static double lastReach = -1; static long lastReachAt;
@@ -31,6 +31,7 @@ public final class Hud {
         showStats = !m.has("stats") || BridgeMod.bool(m, "stats");
         glow = !m.has("glow") || BridgeMod.bool(m, "glow");
         corner = BridgeMod.str(m, "corner", "tl");
+        showInv = !m.has("inventory") || BridgeMod.bool(m, "inventory");
     }
 
     static void text(JsonObject m) {
@@ -94,6 +95,7 @@ public final class Hud {
             if (BridgeMod.assist != null && BridgeMod.assist.wtapTicks > 0) sb.append("W-TAP  ");
             Aim.Req q = Aim.cur;
             if (q != null) sb.append(q.locked ? "AIM [locked]" : q.found ? "AIM" : "AIM (no target)").append("  ");
+            if (Pvp.on) sb.append(Pvp.eatSlot >= 0 ? "EATING  " : "PVP  ");
             if (sb.length() > 0) lines.add(new Object[]{"MacroForge  " + sb.toString().trim(), AQUA});
         }
 
@@ -108,8 +110,9 @@ public final class Hud {
                     lines.add(new Object[]{name + extra + (shield ? "  SHIELD" : "") + (le.hurtTime > 0 ? "  hit" : ""), shield ? RED : WHITE});
                     float frac = le.getMaxHealth() <= 0 ? 0 : Math.min(1f, (le.getHealth() + le.getAbsorptionAmount()) / le.getMaxHealth());
                     int col = frac > 0.6f ? GREEN : frac > 0.3f ? YELLOW : RED;
-                    lines.add(new Object[]{"#bar", frac, col, String.format(Locale.ROOT, "%.1f / %.0f HP%s", le.getHealth() + le.getAbsorptionAmount(), le.getMaxHealth(),
-                            t instanceof Player ? "  armor " + le.getArmorValue() : "")});
+                    int dura = Pvp.armorDurability(le), pops = Pvp.popsOf(t);
+                    lines.add(new Object[]{"#bar", frac, col, String.format(Locale.ROOT, "%.1f / %.0f HP%s%s%s", le.getHealth() + le.getAbsorptionAmount(), le.getMaxHealth(),
+                            t instanceof Player ? "  armor " + le.getArmorValue() : "", dura >= 0 ? " (" + dura + "%)" : "", pops > 0 ? "  pops " + pops : "")});
                 } else lines.add(new Object[]{name + extra, WHITE});
             }
         }
@@ -121,6 +124,18 @@ public final class Hud {
             float ch = p.getAttackStrengthScale(0.5f);
             lines.add(new Object[]{"#bar", ch, ch >= 0.95f ? GREEN : ch >= 0.6f ? YELLOW : RED, "Charge " + Math.round(ch * 100) + "%"});
         }
+
+        if (showInv) {
+            int tot = Pvp.count(p, "totem_of_undying"), gap = Pvp.count(p, "golden_apple"), pearl = Pvp.count(p, "ender_pearl"), dura = Pvp.armorDurability(p);
+            float cd = Pvp.pearlCooldown(p);
+            StringBuilder sb = new StringBuilder();
+            sb.append("Totems ").append(tot).append("   Gaps ").append(gap).append("   Pearls ").append(pearl);
+            if (cd > 0) sb.append(" (").append(Math.round(cd * 100)).append("%)");
+            if (dura >= 0) sb.append("   Armor ").append(dura).append("%");
+            lines.add(new Object[]{sb.toString(), tot == 0 ? RED : dura >= 0 && dura < 20 ? YELLOW : GRAY});
+        }
+        if (System.currentTimeMillis() - Pvp.lastPopAt < 3000 && !Pvp.lastPopName.isEmpty())
+            lines.add(new Object[]{Pvp.lastPopName + " popped a totem! (" + Pvp.pops.getOrDefault(Pvp.lastPopName, 0) + ")", YELLOW});
 
         long now = System.currentTimeMillis();
         synchronized (custom) {
