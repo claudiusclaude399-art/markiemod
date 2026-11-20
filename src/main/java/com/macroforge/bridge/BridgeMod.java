@@ -140,7 +140,7 @@ public final class BridgeMod implements ClientModInitializer {
             rk.macroforge$setClickCount(rk.macroforge$getClickCount() + 1);
             a.restoreSlot = -1;
         }
-        if (p == null || mc.screen != null || mc.gameMode == null || p.isSpectator() || (p.isUsingItem() && !a.blocking)) return;
+        if (p == null || mc.screen != null || mc.gameMode == null || p.isSpectator() || (p.isUsingItem() && !a.blocking) || Web.busy()) return;
         KeyMapping atk = mc.options.keyAttack;
         if (a.needAttackHeld && !atk.isDown()) return;
         if (!(mc.hitResult instanceof EntityHitResult eh)) return;
@@ -305,6 +305,7 @@ public final class BridgeMod implements ClientModInitializer {
         LocalPlayer p = mc.player;
         Aim.tick(mc, tick);   // re-pick aim targets every tick (turning happens every frame)
         try { Pvp.tick(mc, tick); } catch (Throwable t) { /* never break the game loop */ }
+        try { Web.tick(mc, tick); } catch (Throwable t) { Web.stage = Web.Stage.IDLE; }
         Assist as = assist;   // shield raised by auto-hit but no longer on a target (looked away / let go): lower it
         if (as != null && as.blocking && as.blockTick < tick - 1) { holdKey(mc.options.keyUse, false); as.blocking = false; }
 
@@ -485,6 +486,8 @@ public final class BridgeMod implements ClientModInitializer {
 
     private static int countTotem(ItemStack s) { return !s.isEmpty() && itemId(s).endsWith("totem_of_undying") ? s.getCount() : 0; }
 
+    public static String blockId(net.minecraft.world.level.block.state.BlockState st) { return String.valueOf(BuiltInRegistries.BLOCK.getKey(st.getBlock())); }
+
     public static String itemId(ItemStack s) {
         if (s == null || s.isEmpty()) return "";
         return String.valueOf(BuiltInRegistries.ITEM.getKey(s.getItem()));
@@ -599,6 +602,7 @@ public final class BridgeMod implements ClientModInitializer {
 
             Crosshair ch = crosshair(mc, p);
             Aim.addState(s);
+            Web.addState(s);
             s.addProperty("looking_at", ch.id);
             s.addProperty("looking_type", ch.type);
             s.addProperty("looking_name", ch.name);
@@ -771,6 +775,13 @@ public final class BridgeMod implements ClientModInitializer {
             }
             case "hud": Hud.config(m); break;
             case "pvp": Pvp.config(m, tick); break;
+            case "web": {
+                JsonObject res = Web.command(m, mc, tick);
+                boolean wok = res.has("ok") && res.get("ok").getAsBoolean();
+                for (Map.Entry<String, com.google.gson.JsonElement> e : res.entrySet()) if (!e.getKey().equals("ok")) r.add(e.getKey(), e.getValue());
+                if (!wok) { ok = false; err = res.has("error_text") ? res.get("error_text").getAsString() : "couldn't web"; }
+                break;
+            }
             case "reset_pops": Pvp.pops.clear(); break;
             case "hud_text": Hud.text(m); break;
             case "blocks": {

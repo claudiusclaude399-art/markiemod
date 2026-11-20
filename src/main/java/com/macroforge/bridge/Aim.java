@@ -385,6 +385,7 @@ public final class Aim {
         Minecraft mc = Minecraft.getInstance();
         LocalPlayer p = mc.player;
         if (p == null || mc.level == null || mc.screen != null || !p.isAlive()) return;
+        if (Web.busy()) return;   // placing a web: don't fight its rotation
         if (q.needAttackHeld && !mc.options.keyAttack.isDown()) { q.locked = false; return; }
         if (q.needUseHeld && !mc.options.keyUse.isDown()) { q.locked = false; return; }
 
