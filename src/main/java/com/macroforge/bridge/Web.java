@@ -24,12 +24,14 @@ import java.util.*;
 public final class Web {
     private Web() {}
 
-    enum Stage { IDLE, AXE_SELECT, AXE_HIT, WEB_SELECT, PLACE, PLACE_HEAD, RESTORE }
+    enum Stage { IDLE, AXE_HIT, KNOCK, WEB_WAIT, PLACE_HEAD, RESTORE }
 
     static Stage stage = Stage.IDLE;
     static Entity target;
     static int prevSlot = -1, webSlot = -1, axeSlot = -1, wait = 0, startTick;
-    static boolean breakShield = true, head = false, look = true, switchBack = true;
+    static boolean breakShield = true, head = false, look = true, switchBack = true, knock = true, needShield = false, waitAir = true;
+    static double stunDelayMs = 550, webDelayMs = 50;
+    static long stunAt, hitAt;
     static float prevYaw, prevPitch;
     static String result = "", lastTarget = "";
     static int placed = 0;
@@ -52,6 +54,11 @@ public final class Web {
         head = BridgeMod.bool(m, "head");
         look = !m.has("look") || BridgeMod.bool(m, "look");
         switchBack = !m.has("switch_back") || BridgeMod.bool(m, "switch_back");
+        knock = !m.has("knock") || BridgeMod.bool(m, "knock");
+        needShield = BridgeMod.bool(m, "need_shield");
+        waitAir = !m.has("wait_air") || BridgeMod.bool(m, "wait_air");
+        stunDelayMs = Math.max(0, Math.min(2000, BridgeMod.num(m, "stun_delay", 550)));
+        webDelayMs = Math.max(0, Math.min(2000, BridgeMod.num(m, "web_delay", 50)));
         double range = BridgeMod.num(m, "range", 4.5);
         String who = BridgeMod.str(m, "target", "crosshair_or_nearest");
         Set<String> friends = new HashSet<>();
@@ -72,18 +79,19 @@ public final class Web {
 
         webSlot = hotbar(p, "cobweb");
         if (webSlot < 0) return fail(r, "no cobweb in your hotbar");
-        if (place(mc, p, t, true) == null) return fail(r, whyNot);
+        boolean shieldUp = t instanceof LivingEntity sl && sl.isUsingItem() && BridgeMod.itemId(sl.getUseItem()).endsWith("shield");
+        if (needShield && !shieldUp) return fail(r, "their shield isn't up");
+        if (!knock && place(mc, p, t, true) == null) return fail(r, whyNot);
 
-        target = t; lastTarget = t.getName().getString(); placed = 0;
+        target = t; lastTarget = t.getName().getString(); placed = 0; hitAt = 0;
         prevSlot = BridgeMod.selectedSlotPublic(p); prevYaw = p.getYRot(); prevPitch = p.getXRot();
         startTick = tick; result = "";
         axeSlot = -1;
-        if (breakShield && t instanceof LivingEntity le && le.isUsingItem() && BridgeMod.itemId(le.getUseItem()).endsWith("shield")
-                && Math.sqrt(t.getBoundingBox().distanceToSqr(p.getEyePosition())) <= 3.0) {
-            axeSlot = BridgeMod.itemId(p.getMainHandItem()).endsWith("_axe") ? prevSlot : hotbarAxe(p);
-        }
-        if (axeSlot >= 0) { select(mc, axeSlot); stage = Stage.AXE_HIT; }
-        else { select(mc, webSlot); stage = Stage.PLACE; if (look) lookAtPlace(mc, p); }
+        if (breakShield && shieldUp && reach(p, t) <= 3.0) axeSlot = BridgeMod.itemId(p.getMainHandItem()).endsWith("_axe") ? prevSlot : hotbarAxe(p);
+        stunAt = System.currentTimeMillis();
+        if (axeSlot >= 0) { select(mc, axeSlot); stage = Stage.AXE_HIT; }          // 1. stun: axe hit disables their shield
+        else if (knock) { select(mc, prevSlot); stage = Stage.KNOCK; stunAt = 0; } // no shield: straight to the knock-up hit
+        else { toWeb(mc, p); }
         r.addProperty("ok", true);
         r.addProperty("target", lastTarget);
         r.addProperty("shield_break", axeSlot >= 0);
@@ -95,6 +103,15 @@ public final class Web {
         if (playersOnly && !(en instanceof Player)) return false;
         if (!Aim.friendlyOk(p, en, friends, true, true)) return false;
         return Math.sqrt(en.getBoundingBox().distanceToSqr(p.getEyePosition())) <= range + 1.0;
+    }
+
+    static double reach(LocalPlayer p, Entity t) { return Math.sqrt(t.getBoundingBox().distanceToSqr(p.getEyePosition())); }
+
+    static void toWeb(Minecraft mc, LocalPlayer p) {
+        select(mc, webSlot);
+        hitAt = hitAt == 0 ? System.currentTimeMillis() : hitAt;
+        stage = Stage.WEB_WAIT;
+        if (look) lookAtPlace(mc, p);
     }
 
     static JsonObject fail(JsonObject r, String why) { result = why; r.addProperty("ok", false); r.addProperty("error_text", why); return r; }
@@ -116,7 +133,23 @@ public final class Web {
 
     /** Click that puts a cobweb into the target's feet (or head) block, or null (whyNot says why). */
     static BlockHitResult place(Minecraft mc, LocalPlayer p, Entity t, boolean feet) {
-        BlockPos spot = feet ? t.blockPosition() : t.blockPosition().above();
+        if (!feet) return placeAt(mc, p, t.blockPosition().above(), false);
+        // in the air (knocked up): web the block they're in if it can be placed, else the block they'll land in
+        BlockPos b = t.blockPosition();
+        String firstWhy = null;
+        for (int i = 0; i < 4; i++) {
+            BlockPos c = b.below(i);
+            if (i > 0 && !mc.level.getBlockState(c).canBeReplaced()) break;   // hit the ground
+            BlockHitResult h = placeAt(mc, p, c, true);
+            if (h != null) return h;
+            if (firstWhy == null) firstWhy = whyNot;
+            if (whyNot.equals("already webbed")) return null;
+        }
+        whyNot = firstWhy == null ? whyNot : firstWhy;
+        return null;
+    }
+
+    static BlockHitResult placeAt(Minecraft mc, LocalPlayer p, BlockPos spot, boolean feet) {
         BlockState here = mc.level.getBlockState(spot);
         if (BridgeMod.blockId(here).endsWith("cobweb")) { whyNot = "already webbed"; return feet ? null : null; }
         if (!here.canBeReplaced()) { whyNot = "no space at their " + (feet ? "feet" : "head"); return null; }
@@ -144,6 +177,7 @@ public final class Web {
     static BlockHitResult planned;
 
     static void lookAtPlace(Minecraft mc, LocalPlayer p) {
+        if (target == null) return;
         planned = place(mc, p, target, true);
         if (planned == null) return;
         float[] yp = Aim.angles(p.getEyePosition(), planned.getLocation());
@@ -155,27 +189,40 @@ public final class Web {
     static void tick(Minecraft mc, int tick) {
         if (stage == Stage.IDLE) return;
         LocalPlayer p = mc.player;
-        if (p == null || mc.level == null || mc.gameMode == null || tick - startTick > 20) { finish(mc, result.isEmpty() ? "timed out" : result); return; }
+        if (p == null || mc.level == null || mc.gameMode == null || tick - startTick > 20 + (int) ((stunDelayMs + webDelayMs) / 50) + 10) { finish(mc, result.isEmpty() ? "timed out" : result); return; }
         if (wait > 0) { wait--; return; }
+        long now = System.currentTimeMillis();
         switch (stage) {
-            case AXE_HIT: {
+            case AXE_HIT: {   // 1. stun
                 if (!BridgeMod.itemId(p.getMainHandItem()).endsWith("_axe")) return;   // slot switch not applied yet
                 if (target.isAlive()) { mc.gameMode.attack(p, target); p.swing(InteractionHand.MAIN_HAND); }
-                select(mc, webSlot);
-                stage = Stage.PLACE;
-                if (look) lookAtPlace(mc, p);
+                stunAt = now;
+                if (knock) { select(mc, prevSlot); stage = Stage.KNOCK; }
+                else toWeb(mc, p);
                 return;
             }
-            case PLACE: {
+            case KNOCK: {     // 2. after the set delay: quick hit to knock them up
+                if (now - stunAt < stunDelayMs) return;
+                if (prevSlot != BridgeMod.selectedSlotPublic(p) && axeSlot != prevSlot) return;   // weapon not back in hand yet
+                if (!target.isAlive()) { finish(mc, "target gone"); return; }
+                if (reach(p, target) > 3.0) { finish(mc, "target out of reach for the knock-up hit"); return; }
+                mc.gameMode.attack(p, target); p.swing(InteractionHand.MAIN_HAND);
+                hitAt = now;
+                toWeb(mc, p);
+                return;
+            }
+            case WEB_WAIT: {  // 3. web them while they're in the air
                 if (!BridgeMod.itemId(p.getMainHandItem()).endsWith("cobweb")) return;
+                if (now - hitAt < webDelayMs) { if (look) lookAtPlace(mc, p); return; }
+                boolean airborne = !target.onGround();
+                if (knock && waitAir && !airborne && now - hitAt < webDelayMs + 250) { if (look) lookAtPlace(mc, p); return; }   // give the knock-up a moment
                 BlockHitResult h = place(mc, p, target, true);
-                if (h == null) { finish(mc, whyNot); return; }
+                if (h == null) { if (now - hitAt < webDelayMs + 400) return; finish(mc, whyNot); return; }   // keep trying briefly
                 if (look) { float[] yp = Aim.angles(p.getEyePosition(), h.getLocation()); Aim.setRot(p, p.getYRot() + BridgeMod.wrapDeg(yp[0] - p.getYRot()), yp[1]); }
                 mc.gameMode.useItemOn(p, InteractionHand.MAIN_HAND, h);
                 p.swing(InteractionHand.MAIN_HAND);
                 placed++;
-                if (head) { stage = Stage.PLACE_HEAD; wait = 1; }
-                else { stage = Stage.RESTORE; wait = 1; }
+                stage = head ? Stage.PLACE_HEAD : Stage.RESTORE; wait = 1;
                 return;
             }
             case PLACE_HEAD: {
@@ -189,7 +236,7 @@ public final class Web {
                 stage = Stage.RESTORE; wait = 1;
                 return;
             }
-            case RESTORE: finish(mc, placed > 0 ? "webbed " + lastTarget + (placed > 1 ? " (feet + head)" : "") : "not placed"); return;
+            case RESTORE: finish(mc, placed > 0 ? (axeSlot >= 0 ? "stunned + " : "") + (knock ? "knocked up + " : "") + "webbed " + lastTarget + (placed > 1 ? " (2 webs)" : "") : "not placed"); return;
             default: finish(mc, "");
         }
     }
