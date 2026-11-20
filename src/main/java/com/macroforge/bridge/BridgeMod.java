@@ -249,6 +249,7 @@ public final class BridgeMod implements ClientModInitializer {
         ClientTickEvents.START_CLIENT_TICK.register(mc -> {
             if (server != null) server.drain();   // commands that arrived since last tick run BEFORE this tick's input handling
             enforceBlocked();
+            try { Drain.tick(mc, tick); } catch (Throwable t) { /* never break the game loop */ }
             if (!keybindHook) runAssist();
         });
         ClientTickEvents.END_CLIENT_TICK.register(BridgeMod::onTick);
@@ -608,6 +609,7 @@ public final class BridgeMod implements ClientModInitializer {
             Crosshair ch = crosshair(mc, p);
             Aim.addState(s);
             Web.addState(s);
+            Drain.addState(s);
             s.addProperty("looking_at", ch.id);
             s.addProperty("looking_type", ch.type);
             s.addProperty("looking_name", ch.name);
@@ -707,6 +709,7 @@ public final class BridgeMod implements ClientModInitializer {
         realDown.clear();
         assist = null;
         Aim.cur = null;
+        Drain.on = false;
     }
 
     private static void onCommand(JsonObject m) {
@@ -780,6 +783,7 @@ public final class BridgeMod implements ClientModInitializer {
             }
             case "hud": Hud.config(m); break;
             case "pvp": Pvp.config(m, tick); break;
+            case "drain": Drain.config(m, tick); break;
             case "web": {
                 JsonObject res = Web.command(m, mc, tick);
                 boolean wok = res.has("ok") && res.get("ok").getAsBoolean();

@@ -96,6 +96,8 @@ public final class Hud {
             Aim.Req q = Aim.cur;
             if (q != null) sb.append(q.locked ? "AIM [locked]" : q.found ? "AIM" : "AIM (no target)").append("  ");
             if (Pvp.on) sb.append(Pvp.eatSlot >= 0 ? "EATING  " : "PVP  ");
+            if (Drain.on) sb.append("WEB DRAIN  ");
+            if (Web.busy()) sb.append("STUN WEB  ");
             if (sb.length() > 0) lines.add(new Object[]{"MacroForge  " + sb.toString().trim(), AQUA});
         }
 
