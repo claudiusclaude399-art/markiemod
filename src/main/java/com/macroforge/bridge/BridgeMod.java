@@ -71,6 +71,11 @@ public final class BridgeMod implements ClientModInitializer {
     /** True once MinecraftMixin's hook on handleKeybinds has fired – then assist runs at the exact right moment. */
     public static boolean keybindHook = false;
 
+    public static void afterKeybinds() {
+        Web.tailHook = true;
+        try { Web.step(Minecraft.getInstance(), tick); } catch (Throwable t) { Web.stage = Web.Stage.IDLE; }
+    }
+
     public static int selectedSlotPublic(LocalPlayer p) { return selectedSlot(p); }
     public static void pressKey(KeyMapping k) { KeyMappingAccessor a = (KeyMappingAccessor) k; a.macroforge$setClickCount(a.macroforge$getClickCount() + 1); }
     /** Hold (or let go of) a game key until told otherwise – kept down every tick like the "down" key mode. */
@@ -305,7 +310,7 @@ public final class BridgeMod implements ClientModInitializer {
         LocalPlayer p = mc.player;
         Aim.tick(mc, tick);   // re-pick aim targets every tick (turning happens every frame)
         try { Pvp.tick(mc, tick); } catch (Throwable t) { /* never break the game loop */ }
-        try { Web.tick(mc, tick); } catch (Throwable t) { Web.stage = Web.Stage.IDLE; }
+        if (!Web.tailHook) { try { Web.step(mc, tick); } catch (Throwable t) { Web.stage = Web.Stage.IDLE; } }   // fallback if the key hook is missing
         Assist as = assist;   // shield raised by auto-hit but no longer on a target (looked away / let go): lower it
         if (as != null && as.blocking && as.blockTick < tick - 1) { holdKey(mc.options.keyUse, false); as.blocking = false; }
 

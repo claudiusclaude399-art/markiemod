@@ -15,4 +15,10 @@ public abstract class MinecraftMixin {
         BridgeMod.keybindHook = true;
         BridgeMod.runAssist();
     }
+
+    /** Right after Minecraft handled the keys (hotbar switches applied): run the stun-web step that needs them. */
+    @Inject(method = "handleKeybinds", at = @At("TAIL"), require = 0)
+    private void macroforge$afterKeybinds(CallbackInfo ci) {
+        BridgeMod.afterKeybinds();
+    }
 }

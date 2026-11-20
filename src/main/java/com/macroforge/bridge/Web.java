@@ -8,6 +8,7 @@ import net.minecraft.core.Direction;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
@@ -18,23 +19,31 @@ import net.minecraft.world.phys.Vec3;
 import java.util.*;
 
 /**
- * "Stun web": (1) target has a shield up and you have an axe → axe hit to disable it, (2) put a cobweb on their feet
- * (optionally their head too), (3) switch back to the item you had. Runs one step per tick so the server accepts it.
+ * "Stun web": (1) axe hit on their raised shield (disables it), (2) after a delay a quick knock-up hit,
+ * (3) a cobweb where the knock-up PHYSICS says they'll be in the air (predicted from Minecraft's own knockback,
+ * gravity and drag – no waiting to see them leave the ground), (4) switch back + turn back onto them.
+ *
+ * Steps run right AFTER Minecraft handles the keys (MinecraftMixin, handleKeybinds TAIL), so a hotbar switch and the
+ * hit/placement that needs it happen in the same tick. Every step has its own delay (ms, rounded to game ticks).
  */
 public final class Web {
     private Web() {}
 
-    enum Stage { IDLE, AXE_HIT, KNOCK, WEB_WAIT, PLACE_HEAD, RESTORE }
+    enum Stage { IDLE, START, STUN, KNOCK, HEAD, BACK }
 
     static Stage stage = Stage.IDLE;
     static Entity target;
-    static int prevSlot = -1, webSlot = -1, axeSlot = -1, wait = 0, startTick;
-    static boolean breakShield = true, head = false, look = true, switchBack = true, knock = true, needShield = false, waitAir = true;
-    static double stunDelayMs = 550, webDelayMs = 50;
-    static long stunAt, hitAt;
+    static int prevSlot = -1, webSlot = -1, axeSlot = -1, startTick, placed;
+    static boolean breakShield = true, head = false, look = true, switchBack = true, knock = true, needShield = false;
+    static double startDelayMs = 0, stunDelayMs = 550, webDelayMs = 50, headDelayMs = 50, backDelayMs = 50, turnBackMs = 120;
+    static long stageAt;                    // when the current stage began (ms)
     static float prevYaw, prevPitch;
     static String result = "", lastTarget = "";
-    static int placed = 0;
+    public static boolean tailHook = false;
+    // prediction made at the knock-up hit
+    static Vec3[] path;                     // predicted feet position for ticks 0..N after the hit
+    static int hitTick = -1;
+    static BlockPos predicted;
 
     public static boolean busy() { return stage != Stage.IDLE; }
 
@@ -42,8 +51,11 @@ public final class Web {
         s.addProperty("web_busy", busy());
         s.addProperty("web_result", result);
         s.addProperty("web_target", lastTarget);
-        s.addProperty("web_count", Pvp.count(Minecraft.getInstance().player, "cobweb"));
+        LocalPlayer p = Minecraft.getInstance().player;
+        s.addProperty("web_count", p == null ? 0 : Pvp.count(p, "cobweb"));
     }
+
+    // ---------------------------------------------------------------- start
 
     static JsonObject command(JsonObject m, Minecraft mc, int tick) {
         JsonObject r = new JsonObject();
@@ -56,9 +68,12 @@ public final class Web {
         switchBack = !m.has("switch_back") || BridgeMod.bool(m, "switch_back");
         knock = !m.has("knock") || BridgeMod.bool(m, "knock");
         needShield = BridgeMod.bool(m, "need_shield");
-        waitAir = !m.has("wait_air") || BridgeMod.bool(m, "wait_air");
-        stunDelayMs = Math.max(0, Math.min(2000, BridgeMod.num(m, "stun_delay", 550)));
-        webDelayMs = Math.max(0, Math.min(2000, BridgeMod.num(m, "web_delay", 50)));
+        startDelayMs = ms(m, "start_delay", 0);
+        stunDelayMs = ms(m, "stun_delay", 550);
+        webDelayMs = ms(m, "web_delay", 50);
+        headDelayMs = ms(m, "head_delay", 50);
+        backDelayMs = ms(m, "back_delay", 50);
+        turnBackMs = ms(m, "turn_back_ms", 120);
         double range = BridgeMod.num(m, "range", 4.5);
         String who = BridgeMod.str(m, "target", "crosshair_or_nearest");
         Set<String> friends = new HashSet<>();
@@ -76,180 +91,246 @@ public final class Web {
             }
         }
         if (t == null) return fail(r, "no target in range");
-
         webSlot = hotbar(p, "cobweb");
         if (webSlot < 0) return fail(r, "no cobweb in your hotbar");
-        boolean shieldUp = t instanceof LivingEntity sl && sl.isUsingItem() && BridgeMod.itemId(sl.getUseItem()).endsWith("shield");
+        boolean shieldUp = shielding(t);
         if (needShield && !shieldUp) return fail(r, "their shield isn't up");
-        if (!knock && place(mc, p, t, true) == null) return fail(r, whyNot);
 
-        target = t; lastTarget = t.getName().getString(); placed = 0; hitAt = 0;
+        target = t; lastTarget = t.getName().getString(); placed = 0; path = null; predicted = null; hitTick = -1;
         prevSlot = BridgeMod.selectedSlotPublic(p); prevYaw = p.getYRot(); prevPitch = p.getXRot();
         startTick = tick; result = "";
         axeSlot = -1;
-        if (breakShield && shieldUp && reach(p, t) <= 3.0) axeSlot = BridgeMod.itemId(p.getMainHandItem()).endsWith("_axe") ? prevSlot : hotbarAxe(p);
-        stunAt = System.currentTimeMillis();
-        if (axeSlot >= 0) { select(mc, axeSlot); stage = Stage.AXE_HIT; }          // 1. stun: axe hit disables their shield
-        else if (knock) { select(mc, prevSlot); stage = Stage.KNOCK; stunAt = 0; } // no shield: straight to the knock-up hit
-        else { toWeb(mc, p); }
+        if (breakShield && shieldUp) axeSlot = BridgeMod.itemId(p.getMainHandItem()).endsWith("_axe") ? prevSlot : hotbar(p, "_axe");
+        enter(Stage.START);
+        if (startDelayMs <= 0) preselect(mc);   // so the switch is applied in this very tick's key handling
         r.addProperty("ok", true);
         r.addProperty("target", lastTarget);
-        r.addProperty("shield_break", axeSlot >= 0);
+        r.addProperty("stun", axeSlot >= 0);
         return r;
     }
+
+    static double ms(JsonObject m, String k, double def) { return Math.max(0, Math.min(3000, BridgeMod.num(m, k, def))); }
+
+    static boolean shielding(Entity t) { return t instanceof LivingEntity sl && sl.isUsingItem() && BridgeMod.itemId(sl.getUseItem()).endsWith("shield"); }
 
     static boolean ok(LocalPlayer p, Entity en, Set<String> friends, boolean playersOnly, double range) {
         if (en == p || !en.isAlive() || !(en instanceof LivingEntity) || en.isSpectator()) return false;
         if (playersOnly && !(en instanceof Player)) return false;
         if (!Aim.friendlyOk(p, en, friends, true, true)) return false;
-        return Math.sqrt(en.getBoundingBox().distanceToSqr(p.getEyePosition())) <= range + 1.0;
-    }
-
-    static double reach(LocalPlayer p, Entity t) { return Math.sqrt(t.getBoundingBox().distanceToSqr(p.getEyePosition())); }
-
-    static void toWeb(Minecraft mc, LocalPlayer p) {
-        select(mc, webSlot);
-        hitAt = hitAt == 0 ? System.currentTimeMillis() : hitAt;
-        stage = Stage.WEB_WAIT;
-        if (look) lookAtPlace(mc, p);
+        return reach(p, en) <= range + 1.0;
     }
 
     static JsonObject fail(JsonObject r, String why) { result = why; r.addProperty("ok", false); r.addProperty("error_text", why); return r; }
-
-    static int hotbar(LocalPlayer p, String idEnd) {
-        for (int i = 0; i < 9; i++) if (BridgeMod.itemId(p.getInventory().getItem(i)).endsWith(idEnd)) return i;
-        return -1;
-    }
-
-    static int hotbarAxe(LocalPlayer p) { return hotbar(p, "_axe"); }
+    static double reach(LocalPlayer p, Entity t) { return Math.sqrt(t.getBoundingBox().distanceToSqr(p.getEyePosition())); }
+    static int hotbar(LocalPlayer p, String idEnd) { for (int i = 0; i < 9; i++) if (BridgeMod.itemId(p.getInventory().getItem(i)).endsWith(idEnd)) return i; return -1; }
 
     static void select(Minecraft mc, int slot) {
-        if (slot >= 0 && slot != BridgeMod.selectedSlotPublic(mc.player)) BridgeMod.pressKey(mc.options.keyHotbarSlots[slot]);   // applied at the start of next tick
+        if (slot >= 0 && slot != BridgeMod.selectedSlotPublic(mc.player)) BridgeMod.pressKey(mc.options.keyHotbarSlots[slot]);
     }
 
-    // ---------------------------------------------------------------- where to put the web
+    static void enter(Stage s) { stage = s; stageAt = System.currentTimeMillis(); }
+    static boolean waited(double ms) { return System.currentTimeMillis() - stageAt >= ms - 25; }   // -25: land on the nearest tick, not one late
+    static boolean holding(LocalPlayer p, String idEnd) { return BridgeMod.itemId(p.getMainHandItem()).endsWith(idEnd); }
+
+    /** Switch to what the next step needs early, so it's in hand when that step's delay is over. */
+    static void preselect(Minecraft mc) {
+        switch (stage) {
+            case START: select(mc, axeSlot >= 0 ? axeSlot : knock ? prevSlot : webSlot); break;
+            case STUN: select(mc, knock ? prevSlot : webSlot); break;
+            case KNOCK: select(mc, webSlot); break;
+            default: break;
+        }
+    }
+
+    // ---------------------------------------------------------------- steps (after key handling each tick)
+
+    /** Called right after Minecraft's handleKeybinds (or at the end of the tick if that hook is missing). */
+    public static void step(Minecraft mc, int tick) {
+        if (stage == Stage.IDLE) return;
+        LocalPlayer p = mc.player;
+        int limit = 20 + (int) ((startDelayMs + stunDelayMs + webDelayMs + headDelayMs + backDelayMs) / 50);
+        if (p == null || mc.level == null || mc.gameMode == null || tick - startTick > limit || target == null) { finish(mc, result.isEmpty() ? "timed out" : result); return; }
+        switch (stage) {
+            case START: {
+                if (!waited(startDelayMs)) return;
+                if (axeSlot >= 0) {
+                    if (!holding(p, "_axe")) { select(mc, axeSlot); return; }
+                    if (reach(p, target) > 3.0) { finish(mc, "too far for the stun hit"); return; }
+                    hit(mc, p);                               // 1. stun: their shield is disabled for 5 s
+                    enter(Stage.STUN); preselect(mc);         // weapon goes back in hand during the delay
+                    if (look) face(p, target.getBoundingBox().getCenter());
+                } else if (knock) { enter(Stage.STUN); stageAt -= (long) stunDelayMs; preselect(mc); }   // no shield/axe: no stun, no wait
+                else { enter(Stage.KNOCK); hitTick = tick; preselect(mc); }
+                return;
+            }
+            case STUN: {
+                if (!knock) { enter(Stage.KNOCK); hitTick = tick; return; }
+                if (look) face(p, target.getBoundingBox().getCenter());
+                if (!waited(stunDelayMs)) return;
+                if (prevSlot != BridgeMod.selectedSlotPublic(p)) { select(mc, prevSlot); return; }
+                if (!target.isAlive()) { finish(mc, "target gone"); return; }
+                if (reach(p, target) > 3.0) { finish(mc, "too far for the knock-up hit"); return; }
+                path = predict(p, target);                    // where the knockback will carry them, tick by tick
+                hit(mc, p);                                   // 2. knock up
+                hitTick = tick;
+                enter(Stage.KNOCK);
+                if (webDelayMs <= 0) {                        // 0 ms: switch + web in this same tick
+                    p.getInventory().setSelectedSlot(webSlot);
+                    BlockHitResult h = webClick(mc, p, 0);
+                    if (h != null) {
+                        mc.gameMode.useItemOn(p, InteractionHand.MAIN_HAND, h);   // sends the slot change first, then the web
+                        p.swing(InteractionHand.MAIN_HAND);
+                        placed++;
+                        if (look) face(p, h.getLocation());
+                        enter(head ? Stage.HEAD : Stage.BACK);
+                        return;
+                    }
+                }
+                preselect(mc);                                // cobweb goes in hand right away
+                aimAtPrediction(mc, p, tick + 1);
+                return;
+            }
+            case KNOCK: {                                     // 3. web where they'll be in the air
+                if (!holding(p, "cobweb")) { select(mc, webSlot); aimAtPrediction(mc, p, tick + 1); return; }
+                if (!waited(webDelayMs)) { aimAtPrediction(mc, p, tick + 1); return; }
+                BlockHitResult h = webClick(mc, p, tick - hitTick);
+                if (h == null) {
+                    if (tick - hitTick <= 10) { aimAtPrediction(mc, p, tick + 1); return; }   // keep trying while they fly
+                    finish(mc, whyNot); return;
+                }
+                if (look) face(p, h.getLocation());
+                mc.gameMode.useItemOn(p, InteractionHand.MAIN_HAND, h);
+                p.swing(InteractionHand.MAIN_HAND);
+                placed++;
+                enter(head ? Stage.HEAD : Stage.BACK);
+                return;
+            }
+            case HEAD: {
+                if (!waited(headDelayMs)) return;
+                if (holding(p, "cobweb")) {
+                    BlockPos above = predicted != null ? predicted.above() : target.blockPosition().above();
+                    BlockHitResult h = placeAt(mc, p, above);
+                    if (h != null) { if (look) face(p, h.getLocation()); mc.gameMode.useItemOn(p, InteractionHand.MAIN_HAND, h); p.swing(InteractionHand.MAIN_HAND); placed++; }
+                }
+                enter(Stage.BACK);
+                return;
+            }
+            case BACK: {
+                if (!waited(backDelayMs)) return;
+                finish(mc, placed > 0 ? (axeSlot >= 0 ? "stunned + " : "") + (knock ? "knocked up + " : "") + "webbed " + lastTarget + (placed > 1 ? " (2 webs)" : "") : "not placed");
+                return;
+            }
+            default: finish(mc, "");
+        }
+    }
+
+    static void hit(Minecraft mc, LocalPlayer p) { mc.gameMode.attack(p, target); p.swing(InteractionHand.MAIN_HAND); }
+
+    static void face(LocalPlayer p, Vec3 at) {
+        float[] yp = Aim.angles(p.getEyePosition(), at);
+        Aim.setRot(p, p.getYRot() + BridgeMod.wrapDeg(yp[0] - p.getYRot()), yp[1]);
+    }
+
+    // ---------------------------------------------------------------- prediction
+
+    /**
+     * Knock-up flight from Minecraft's own numbers: knockback 0.4 × (1 − knockback resistance) away from where you
+     * face, vertical min(0.4, vy/2 + 0.4) if on the ground; then each tick: move, vy = (vy − 0.08) × 0.98, vx/vz × 0.91.
+     */
+    static Vec3[] predict(LocalPlayer p, Entity t) {
+        double res = 0;
+        if (t instanceof LivingEntity le) { try { res = le.getAttributeValue(Attributes.KNOCKBACK_RESISTANCE); } catch (Throwable ignored) {} }
+        double s = 0.4 * Math.max(0, 1 - res);
+        double yaw = Math.toRadians(p.getYRot());
+        double kx = -Math.sin(yaw), kz = Math.cos(yaw);       // the way you're facing = the way they fly
+        Vec3 v = t.getDeltaMovement();
+        double vx = v.x / 2 + kx * s, vz = v.z / 2 + kz * s;
+        double vy = t.onGround() ? Math.min(0.4, v.y / 2 + s) : v.y;
+        Vec3 pos = t.position();
+        Minecraft mc = Minecraft.getInstance();
+        Vec3[] out = new Vec3[16];
+        out[0] = pos;
+        for (int i = 1; i < out.length; i++) {
+            pos = pos.add(vx, vy, vz);
+            BlockPos below = BlockPos.containing(pos.x, pos.y - 0.01, pos.z);
+            if (vy < 0 && !mc.level.getBlockState(below).getCollisionShape(mc.level, below).isEmpty() && pos.y - below.getY() < 1.0) {
+                pos = new Vec3(pos.x, below.getY() + 1.0, pos.z); vy = 0;   // landed
+            }
+            out[i] = pos;
+            vy = (vy - 0.08) * 0.98; vx *= 0.91; vz *= 0.91;
+        }
+        return out;
+    }
 
     static String whyNot = "";
 
-    /** Click that puts a cobweb into the target's feet (or head) block, or null (whyNot says why). */
-    static BlockHitResult place(Minecraft mc, LocalPlayer p, Entity t, boolean feet) {
-        if (!feet) return placeAt(mc, p, t.blockPosition().above(), false);
-        // in the air (knocked up): web the block they're in if it can be placed, else the block they'll land in
-        BlockPos b = t.blockPosition();
-        String firstWhy = null;
-        for (int i = 0; i < 4; i++) {
-            BlockPos c = b.below(i);
-            if (i > 0 && !mc.level.getBlockState(c).canBeReplaced()) break;   // hit the ground
-            BlockHitResult h = placeAt(mc, p, c, true);
-            if (h != null) return h;
-            if (firstWhy == null) firstWhy = whyNot;
-            if (whyNot.equals("already webbed")) return null;
+    /** Where to click to web them `ticksAfterHit` ticks after the knock-up (null + whyNot if nowhere). */
+    static BlockHitResult webClick(Minecraft mc, LocalPlayer p, int ticksAfterHit) {
+        List<BlockPos> spots = new ArrayList<>();
+        if (path != null) {
+            // the block their feet will be in on the tick the web lands (next tick), then the ones after it, then the landing spot
+            for (int i = Math.max(1, ticksAfterHit + 1); i < path.length; i++) addOnce(spots, BlockPos.containing(path[i]));
+            addOnce(spots, BlockPos.containing(path[path.length - 1]));
         }
-        whyNot = firstWhy == null ? whyNot : firstWhy;
+        BlockPos now = target.blockPosition();
+        addOnce(spots, now);
+        for (int i = 1; i <= 3; i++) { BlockPos c = now.below(i); if (!mc.level.getBlockState(c).canBeReplaced()) break; addOnce(spots, c); }
+        String first = null;
+        for (BlockPos c : spots) {
+            BlockHitResult h = placeAt(mc, p, c);
+            if (h != null) { predicted = c; return h; }
+            if (first == null) first = whyNot;
+            if ("already webbed".equals(whyNot)) return null;
+        }
+        whyNot = first == null ? "nowhere to place the web" : first;
         return null;
     }
 
-    static BlockHitResult placeAt(Minecraft mc, LocalPlayer p, BlockPos spot, boolean feet) {
+    static void addOnce(List<BlockPos> l, BlockPos b) { if (!l.contains(b)) l.add(b); }
+
+    static void aimAtPrediction(Minecraft mc, LocalPlayer p, int tick) {
+        if (!look || hitTick < 0) return;
+        BlockHitResult h = webClick(mc, p, tick - hitTick);
+        if (h != null) face(p, h.getLocation());
+    }
+
+    /** Click that puts a cobweb into `spot` (needs a solid neighbour within reach), or null. */
+    static BlockHitResult placeAt(Minecraft mc, LocalPlayer p, BlockPos spot) {
         BlockState here = mc.level.getBlockState(spot);
-        if (BridgeMod.blockId(here).endsWith("cobweb")) { whyNot = "already webbed"; return feet ? null : null; }
-        if (!here.canBeReplaced()) { whyNot = "no space at their " + (feet ? "feet" : "head"); return null; }
+        if (BridgeMod.blockId(here).endsWith("cobweb")) { whyNot = "already webbed"; return null; }
+        if (!here.canBeReplaced()) { whyNot = "no space for a web there"; return null; }
         if (p.getBoundingBox().intersects(new AABB(spot))) { whyNot = "too close – it would web you"; return null; }
         Vec3 eye = p.getEyePosition();
         double reach = 4.5;
         try { reach = p.blockInteractionRange(); } catch (Throwable ignored) {}
         BlockHitResult best = null; double bestD = Double.MAX_VALUE;
-        Direction[] order = { Direction.DOWN, Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.WEST, Direction.UP };
-        for (Direction d : order) {
+        for (Direction d : Direction.values()) {
             BlockPos n = spot.relative(d);
             BlockState ns = mc.level.getBlockState(n);
-            if (ns.isAir() || ns.canBeReplaced()) continue;   // need something to click against
+            if (ns.isAir() || ns.canBeReplaced()) continue;
             Direction face = d.getOpposite();
             Vec3 hit = Vec3.atCenterOf(n).add(face.getStepX() * 0.5, face.getStepY() * 0.5, face.getStepZ() * 0.5);
             double dist = eye.distanceTo(hit);
             if (dist > reach) continue;
-            double score = dist + (d == Direction.DOWN ? -1.0 : 0);   // prefer the floor
+            double score = dist + (d == Direction.DOWN ? -1.0 : 0);
             if (score < bestD) { bestD = score; best = new BlockHitResult(hit, face, n, false); }
         }
-        if (best == null) whyNot = "nothing to place the web against within reach (target in the air?)";
+        if (best == null) whyNot = "nothing to place the web against within reach";
         return best;
     }
 
-    static BlockHitResult planned;
-
-    static void lookAtPlace(Minecraft mc, LocalPlayer p) {
-        if (target == null) return;
-        planned = place(mc, p, target, true);
-        if (planned == null) return;
-        float[] yp = Aim.angles(p.getEyePosition(), planned.getLocation());
-        Aim.setRot(p, p.getYRot() + BridgeMod.wrapDeg(yp[0] - p.getYRot()), yp[1]);
-    }
-
-    // ---------------------------------------------------------------- one step per tick (END of tick, after the player sent its rotation)
-
-    static void tick(Minecraft mc, int tick) {
-        if (stage == Stage.IDLE) return;
-        LocalPlayer p = mc.player;
-        if (p == null || mc.level == null || mc.gameMode == null || tick - startTick > 20 + (int) ((stunDelayMs + webDelayMs) / 50) + 10) { finish(mc, result.isEmpty() ? "timed out" : result); return; }
-        if (wait > 0) { wait--; return; }
-        long now = System.currentTimeMillis();
-        switch (stage) {
-            case AXE_HIT: {   // 1. stun
-                if (!BridgeMod.itemId(p.getMainHandItem()).endsWith("_axe")) return;   // slot switch not applied yet
-                if (target.isAlive()) { mc.gameMode.attack(p, target); p.swing(InteractionHand.MAIN_HAND); }
-                stunAt = now;
-                if (knock) { select(mc, prevSlot); stage = Stage.KNOCK; }
-                else toWeb(mc, p);
-                return;
-            }
-            case KNOCK: {     // 2. after the set delay: quick hit to knock them up
-                if (now - stunAt < stunDelayMs) return;
-                if (prevSlot != BridgeMod.selectedSlotPublic(p) && axeSlot != prevSlot) return;   // weapon not back in hand yet
-                if (!target.isAlive()) { finish(mc, "target gone"); return; }
-                if (reach(p, target) > 3.0) { finish(mc, "target out of reach for the knock-up hit"); return; }
-                mc.gameMode.attack(p, target); p.swing(InteractionHand.MAIN_HAND);
-                hitAt = now;
-                toWeb(mc, p);
-                return;
-            }
-            case WEB_WAIT: {  // 3. web them while they're in the air
-                if (!BridgeMod.itemId(p.getMainHandItem()).endsWith("cobweb")) return;
-                if (now - hitAt < webDelayMs) { if (look) lookAtPlace(mc, p); return; }
-                boolean airborne = !target.onGround();
-                if (knock && waitAir && !airborne && now - hitAt < webDelayMs + 250) { if (look) lookAtPlace(mc, p); return; }   // give the knock-up a moment
-                BlockHitResult h = place(mc, p, target, true);
-                if (h == null) { if (now - hitAt < webDelayMs + 400) return; finish(mc, whyNot); return; }   // keep trying briefly
-                if (look) { float[] yp = Aim.angles(p.getEyePosition(), h.getLocation()); Aim.setRot(p, p.getYRot() + BridgeMod.wrapDeg(yp[0] - p.getYRot()), yp[1]); }
-                mc.gameMode.useItemOn(p, InteractionHand.MAIN_HAND, h);
-                p.swing(InteractionHand.MAIN_HAND);
-                placed++;
-                stage = head ? Stage.PLACE_HEAD : Stage.RESTORE; wait = 1;
-                return;
-            }
-            case PLACE_HEAD: {
-                if (BridgeMod.itemId(p.getMainHandItem()).endsWith("cobweb")) {
-                    BlockHitResult h = place(mc, p, target, false);
-                    if (h != null) {
-                        if (look) { float[] yp = Aim.angles(p.getEyePosition(), h.getLocation()); Aim.setRot(p, p.getYRot() + BridgeMod.wrapDeg(yp[0] - p.getYRot()), yp[1]); }
-                        mc.gameMode.useItemOn(p, InteractionHand.MAIN_HAND, h); p.swing(InteractionHand.MAIN_HAND); placed++;
-                    }
-                }
-                stage = Stage.RESTORE; wait = 1;
-                return;
-            }
-            case RESTORE: finish(mc, placed > 0 ? (axeSlot >= 0 ? "stunned + " : "") + (knock ? "knocked up + " : "") + "webbed " + lastTarget + (placed > 1 ? " (2 webs)" : "") : "not placed"); return;
-            default: finish(mc, "");
-        }
-    }
+    // ---------------------------------------------------------------- finish
 
     static void finish(Minecraft mc, String why) {
         LocalPlayer p = mc.player;
         if (p != null) {
             if (switchBack && prevSlot >= 0) select(mc, prevSlot);
-            if (look) {   // turn back to where you were looking (smoothly, ~120 ms) – onto the target if it's still there
+            if (look) {
                 JsonObject q = new JsonObject();
                 if (target != null && target.isAlive()) { q.addProperty("target", "pos"); Vec3 c = target.getBoundingBox().getCenter(); q.addProperty("x", c.x); q.addProperty("y", c.y + 0.4); q.addProperty("z", c.z); }
                 else { q.addProperty("target", "dir"); q.addProperty("yaw", prevYaw); q.addProperty("pitch", prevPitch); }
-                q.addProperty("ms", 120);
+                q.addProperty("ms", Math.max(1, turnBackMs));
+                if (turnBackMs <= 0) q.addProperty("speed", 0);
                 Aim.command(q, mc, 0);
             }
         }
@@ -258,6 +339,6 @@ public final class Web {
         e.addProperty("ok", placed > 0);
         e.addProperty("target", lastTarget);
         BridgeMod.sendPublic(e);
-        stage = Stage.IDLE; target = null; wait = 0; planned = null;
+        stage = Stage.IDLE; target = null; path = null;
     }
 }
