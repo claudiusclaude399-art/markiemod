@@ -7,9 +7,12 @@ click or press a key, so viewers still hear you clicking.
 - **Clickpacks:** sounds are organised in packs with their own folders for clicks, releases,
   soft clicks and hard clicks. Downloaded packs (.wav/.ogg, including Geometry Dash clickbot packs)
   can be dropped straight in.
-- **Mouse:** record 10 clicks. Every mouse button press plays a random one of the 10.
+- **Mouse:** record 10 clicks. Every mouse button press plays a random one of the 10. Or give
+  Left / Right / Middle / side buttons their **own** sounds, and record **scroll wheel** notches too.
 - **Keyboard:** record 10 key presses (W, A, S, D). **Every** key on the keyboard plays a random one
   of those 10. Or record W, A, S, D (or any key) **individually** so each key has its own sound.
+- **Desk stereo:** like a real desk, the keyboard sounds come from the left (every key from its own
+  spot, A further left than L) and the mouse from the right.
 - **Press and release:** each take captures both the "down" and the "let go" sound. Pressing plays the
   press sound, and releasing plays the release sound *of the same take*, just like a real switch.
 - It never plays the same take twice in a row, and by default ("Extra variation") each play also gets a
@@ -77,8 +80,12 @@ packs/<Pack name>/
 - Packs made for Geometry Dash clickbots (the genre folders directly in the pack folder, or in
   `player1/`) work as **mouse** packs as they are. Just drop the folder into `packs/` and hit
   **Reload packs**.
-- **New pack** (in the pack picker or a clickpack screen) makes an empty pack to record into; rename
-  its folder any time.
+- **Downloaded a .zip?** Drop it into `packs/` as it is. It's unpacked into a pack of the same
+  name the next time the pack picker opens (or on **Reload packs** / restart), and the zip is moved to
+  `packs/.imported/`. Only the .wav / .ogg files are taken, and a wrapping folder inside the zip is
+  skipped.
+- **New pack**, **Rename...** and **Share as .zip** are in the pack picker. Sharing saves
+  `config/clicksounds/exported/<pack>.zip`, which anyone can drop into their own packs folder.
 
 ### Recording keys individually (W, A, S, D or any key)
 
@@ -105,6 +112,32 @@ keyboard/
 Folder names are Minecraft's key names: letters and digits as themselves, plus `space`,
 `left.shift`, `enter`, `tab`, `left.control` and so on (they don't depend on your keyboard layout).
 
+### Mouse buttons and the scroll wheel
+
+**Mouse clickpack...** has the same kind of row: **All | Left | Right | Middle | Back | Fwd | Scroll**.
+
+- Pick **Right** and **Record 10** to give right-clicks their own sound (only right clicks are
+  recorded there). Buttons without their own sounds use the **All** sounds.
+- **Scroll**: record 10 wheel notches (scroll one notch at a time). In game every notch plays one of
+  them (touchpad scrolling is added up into notches). Packs without scroll sounds stay silent when
+  you scroll; it never plays click sounds for the wheel.
+
+```
+mouse/
+  clicks/ releases/ ...          All buttons (shared)
+  buttons/
+    left/  right/  middle/  back/  forward/     clicks/ releases/ softclicks/ ...
+  scroll/
+    clicks/  softclicks/  hardclicks/           (no releases: a notch has none)
+```
+
+### Desk stereo
+
+With **Desk stereo** on (Sound options), sounds are placed like on a real desk: the keyboard spreads
+from the far left (Esc, Q, A, Shift) to just left of the middle (Enter, arrow keys), and the mouse is
+on the right. **Desk width** sets how wide that is; dragging it plays a key and then a click so you
+can hear it. Turn it off for everything in the centre.
+
 ### Soft and hard clicks (optional)
 
 How fast you click decides which genre plays:
@@ -129,6 +162,9 @@ them, click lightly for soft clicks and firmly for hard clicks.
 | Sound options: Release sounds | Play the release sound when you let go. |
 | Sound options: Extra variation | Tiny random pitch/volume change on every play. |
 | Sound options: Soft / Hard clicks | On/off, and their timing. |
+| Sound options: Desk stereo / Desk width | Keyboard on the left, mouse on the right, and how far apart. |
+| Sound options: Scroll sounds | A sound per scroll wheel notch (if the pack has scroll sounds). |
+| Sound options: Sounds in menus | Also play sounds while a menu or the chat is open. |
 | Mic | Which microphone records (click to cycle through devices). |
 | Output | Where the sounds play. Default is your normal speakers/headphones, which OBS / Discord desktop audio already captures. Pick a virtual audio cable to send the clicks *only* to your stream/recording. |
 

@@ -80,15 +80,28 @@ public class RecordScreen extends Screen {
         this.onDone = onDone;
     }
 
+    private boolean scroll() {
+        return mouse && SampleBank.SCROLL.equals(key);
+    }
+
     private static String title(boolean mouse, String key, Genre genre, int slot) {
         String kind = genre == Genre.NORMAL ? "" : genre == Genre.SOFT ? "soft " : "hard ";
-        String what = mouse ? kind + "mouse click" : key == null || key.isEmpty() ? kind + "key press"
-            : kind + SampleBank.keyLabel(key) + " press";
-        return slot < 0 ? "Recording 10 " + what + (what.endsWith("ss") ? "es" : "s") : "Redo " + what + " " + (slot + 1);
+        String what;
+        if (mouse) what = key == null || key.isEmpty() ? kind + "mouse click"
+            : SampleBank.SCROLL.equals(key) ? kind + "scroll notch" : kind + SampleBank.keyLabel(key) + " click";
+        else what = key == null || key.isEmpty() ? kind + "key press" : kind + SampleBank.keyLabel(key) + " press";
+        String plural = what.endsWith("ss") || what.endsWith("ch") ? what + "es" : what + "s";
+        return slot < 0 ? "Recording 10 " + plural : "Redo " + what + " " + (slot + 1);
     }
 
     private String instruction() {
-        String act = mouse ? "Click your mouse" : key.isEmpty() ? "Press W, A, S or D" : "Press " + SampleBank.keyLabel(key);
+        if (scroll()) return switch (genre) {
+            case NORMAL -> "Scroll the wheel one notch at a time";
+            case SOFT -> "Scroll gently, one notch at a time";
+            case HARD -> "Scroll firmly, one notch at a time";
+        };
+        String act = mouse ? (key.isEmpty() ? "Click your mouse" : "Click the " + SampleBank.keyLabel(key) + " button")
+            : key.isEmpty() ? "Press W, A, S or D" : "Press " + SampleBank.keyLabel(key);
         return switch (genre) {
             case NORMAL -> act + " like you normally do - press and let go";
             case SOFT -> act + " lightly, like when spam-clicking - press and let go";
@@ -140,7 +153,33 @@ public class RecordScreen extends Screen {
     @Override
     public boolean mouseClicked(Click click, boolean doubled) {
         if (mic == null) return super.mouseClicked(click, doubled);
-        if (mouse) onPress(click.button());
+        if (!mouse) return true;
+        if (scroll()) {
+            setStatus("Use the scroll wheel - clicks aren't recorded here", YELLOW);
+            return true;
+        }
+        String b = ClickSoundsClient.buttonName(click.button());
+        if (!key.isEmpty() && !key.equals(b)) {
+            setStatus("That's the " + SampleBank.keyLabel(b) + " button - only " + SampleBank.keyLabel(key) + " is recorded here", YELLOW);
+            return true;
+        }
+        onPress(click.button());
+        return true;
+    }
+
+    @Override
+    public boolean mouseScrolled(double mouseX, double mouseY, double horizontal, double vertical) {
+        if (mic == null || !scroll() || vertical == 0) return true;
+        if (phase != Phase.READY) {
+            if (phase == Phase.WAITING) setStatus("A bit slower - one notch, then wait for it to register", YELLOW);
+            return true;
+        }
+        // a notch is a press without a release
+        pressMark = mic.now();
+        marks.add(new Mark(pressMark, false));
+        releaseMark = -1;
+        waitEnd = pressMark + (long) (mic.rate() * POST);
+        phase = Phase.WAITING;
         return true;
     }
 
@@ -211,7 +250,7 @@ public class RecordScreen extends Screen {
             t.release() == null ? null : Wav.resample(t.release(), rate, AudioEngine.RATE));
         takes.add(take);
         thumbs.add(new Waveforms.TakeShape(take, THUMB_W - 2));
-        if (hadRelease && t.release() == null) setStatus("Got the press (didn't hear the release)", GREEN);
+        if (hadRelease && t.release() == null && !scroll()) setStatus("Got the press (didn't hear the release)", GREEN);
         else setStatus("Got it!", GREEN);
 
         if (takes.size() >= needed()) finish();

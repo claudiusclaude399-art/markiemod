@@ -30,13 +30,15 @@ public final class AudioEngine {
 
     private static final class Voice {
         final float[] data;
-        final float gain;
+        final float gainL, gainR;
         final double step;
         double pos; // negative = still waiting to start
 
-        Voice(float[] data, float gain, double step, double pos) {
+        Voice(float[] data, float gain, float pan, double step, double pos) {
             this.data = data;
-            this.gain = gain;
+            // balance pan: centre keeps full level on both sides, so mono and stereo sound equally loud
+            this.gainL = gain * Math.min(1f, 1f - pan);
+            this.gainR = gain * Math.min(1f, 1f + pan);
             this.step = step;
             this.pos = pos;
         }
@@ -56,16 +58,25 @@ public final class AudioEngine {
     }
 
     public static void play(float[] data, float gain, float pitch) {
-        play(data, gain, pitch, 0);
+        play(data, gain, pitch, 0, 0f);
     }
 
-    /** @param pitch 1.0 = original speed; @param delayMs start this much later */
     public static void play(float[] data, float gain, float pitch, int delayMs) {
+        play(data, gain, pitch, delayMs, 0f);
+    }
+
+    /**
+     * @param pitch   1.0 = original speed
+     * @param delayMs start this much later
+     * @param pan     -1 = left, 0 = centre, 1 = right
+     */
+    public static void play(float[] data, float gain, float pitch, int delayMs, float pan) {
         if (data == null || data.length == 0 || gain <= 0f) return;
         double startPos = -(delayMs / 1000.0) * RATE * pitch;
+        float p = Math.max(-1f, Math.min(1f, pan));
         synchronized (voices) {
             if (voices.size() >= MAX_VOICES) voices.remove(0);
-            voices.add(new Voice(data, gain, pitch, startPos));
+            voices.add(new Voice(data, gain, p, pitch, startPos));
         }
     }
 
@@ -87,13 +98,13 @@ public final class AudioEngine {
     }
 
     private static void run() {
-        float[] mix = new float[CHUNK];
+        float[] mixL = new float[CHUNK], mixR = new float[CHUNK];
         boolean warned = false;
         while (true) {
             reopen = false;
-            SourceDataLine line = open(1);
-            int channels = 1;
-            if (line == null) { line = open(2); channels = 2; }
+            SourceDataLine line = open(2); // stereo, for desk positioning
+            int channels = 2;
+            if (line == null) { line = open(1); channels = 1; }
             if (line == null) {
                 if (!warned) ClickSoundsClient.LOG.warn("No audio output device available, will keep retrying quietly");
                 warned = true;
@@ -107,7 +118,8 @@ public final class AudioEngine {
             byte[] out = new byte[CHUNK * channels * 2];
             try {
                 while (!reopen) {
-                    Arrays.fill(mix, 0f);
+                    Arrays.fill(mixL, 0f);
+                    Arrays.fill(mixR, 0f);
                     synchronized (voices) {
                         for (int v = voices.size() - 1; v >= 0; v--) {
                             Voice voice = voices.get(v);
@@ -117,7 +129,9 @@ public final class AudioEngine {
                                 int idx = (int) voice.pos;
                                 if (idx >= d.length - 1) { voice.pos = d.length; break; }
                                 float frac = (float) (voice.pos - idx);
-                                mix[i] += (d[idx] + (d[idx + 1] - d[idx]) * frac) * voice.gain;
+                                float smp = d[idx] + (d[idx + 1] - d[idx]) * frac;
+                                mixL[i] += smp * voice.gainL;
+                                mixR[i] += smp * voice.gainR;
                                 voice.pos += voice.step;
                             }
                             if (voice.pos >= d.length - 1) voices.remove(v);
@@ -125,13 +139,11 @@ public final class AudioEngine {
                     }
                     int o = 0;
                     for (int i = 0; i < CHUNK; i++) {
-                        float s = mix[i];
-                        // soft clip so lots of overlapping clicks don't crackle
-                        if (s > 1f || s < -1f) s = (float) Math.tanh(s);
-                        short val = (short) Math.round(s * 32767f);
-                        for (int c = 0; c < channels; c++) {
-                            out[o++] = (byte) val;
-                            out[o++] = (byte) (val >> 8);
+                        if (channels == 2) {
+                            o = put(out, o, mixL[i]);
+                            o = put(out, o, mixR[i]);
+                        } else {
+                            o = put(out, o, (mixL[i] + mixR[i]) * 0.5f);
                         }
                     }
                     line.write(out, 0, out.length); // blocks, which paces this loop
@@ -144,6 +156,15 @@ public final class AudioEngine {
                 sleep(1000);
             }
         }
+    }
+
+    private static int put(byte[] out, int o, float s) {
+        // soft clip so lots of overlapping clicks don't crackle
+        if (s > 1f || s < -1f) s = (float) Math.tanh(s);
+        short val = (short) Math.round(s * 32767f);
+        out[o] = (byte) val;
+        out[o + 1] = (byte) (val >> 8);
+        return o + 2;
     }
 
     private static void sleep(long ms) {

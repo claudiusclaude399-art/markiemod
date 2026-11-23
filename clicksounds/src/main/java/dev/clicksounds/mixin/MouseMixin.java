@@ -16,4 +16,9 @@ public class MouseMixin {
         if (action == GLFW.GLFW_PRESS) ClickSoundsClient.onMouseButton(input.button(), true);
         else if (action == GLFW.GLFW_RELEASE) ClickSoundsClient.onMouseButton(input.button(), false);
     }
+
+    @Inject(method = "onMouseScroll", at = @At("HEAD"))
+    private void clicksounds$onMouseScroll(long window, double horizontal, double vertical, CallbackInfo ci) {
+        ClickSoundsClient.onScroll(vertical);
+    }
 }

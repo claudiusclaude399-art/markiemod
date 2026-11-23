@@ -32,6 +32,14 @@ public final class ClickConfig {
     public static int softMs = 120;
     /** Presses after a pause longer than this (ms) use hard clicks. */
     public static int hardMs = 800;
+    /** Place sounds like a real desk: keyboard on the left (each key at its spot), mouse on the right. */
+    public static boolean deskStereo = true;
+    /** 0..1, how wide the desk is spread out. */
+    public static float stereoWidth = 0.5f;
+    /** Play sounds while a menu / chat is open. */
+    public static boolean inMenus = true;
+    /** Scroll wheel notch sounds (if the pack has them). */
+    public static boolean scrollSounds = true;
 
     private ClickConfig() {}
 
@@ -59,6 +67,10 @@ public final class ClickConfig {
             hardClicks = Boolean.parseBoolean(p.getProperty("hardClicks", "true"));
             softMs = clampInt(p.getProperty("softMs", "120"), 20, 500, 120);
             hardMs = clampInt(p.getProperty("hardMs", "800"), 200, 5000, 800);
+            deskStereo = Boolean.parseBoolean(p.getProperty("deskStereo", "true"));
+            stereoWidth = Math.min(1f, clamp(Float.parseFloat(p.getProperty("stereoWidth", "0.5"))));
+            inMenus = Boolean.parseBoolean(p.getProperty("inMenus", "true"));
+            scrollSounds = Boolean.parseBoolean(p.getProperty("scrollSounds", "true"));
         } catch (Exception e) {
             ClickSoundsClient.LOG.warn("Could not read {}, using defaults", f, e);
         }
@@ -80,6 +92,10 @@ public final class ClickConfig {
         p.setProperty("hardClicks", Boolean.toString(hardClicks));
         p.setProperty("softMs", Integer.toString(softMs));
         p.setProperty("hardMs", Integer.toString(hardMs));
+        p.setProperty("deskStereo", Boolean.toString(deskStereo));
+        p.setProperty("stereoWidth", Float.toString(stereoWidth));
+        p.setProperty("inMenus", Boolean.toString(inMenus));
+        p.setProperty("scrollSounds", Boolean.toString(scrollSounds));
         try {
             Files.createDirectories(file().getParent());
             try (Writer w = Files.newBufferedWriter(file())) {

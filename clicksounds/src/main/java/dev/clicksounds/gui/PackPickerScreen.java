@@ -25,7 +25,7 @@ public class PackPickerScreen extends Screen {
 
     private final Screen parent;
     private boolean mouse;
-    private int page;
+    private int page = -1; // -1 = open on the page holding the active pack
     private int top;
     private String status = "";
     private int statusColor = GRAY;
@@ -48,11 +48,13 @@ public class PackPickerScreen extends Screen {
 
     @Override
     protected void init() {
+        List<String> fresh = Packs.importZips(); // pick up .zip packs dropped in while the game runs
+        if (!fresh.isEmpty()) setStatus("Imported " + String.join(", ", fresh) + " from .zip", GREEN);
         List<String> packs = Packs.list();
         int cx = this.width / 2;
         top = Math.max(42, this.height / 2 - 96);
         // as many rows as fit above the two button rows and the status line
-        perPage = Math.max(3, Math.min(7, (this.height - top - 4 - 8 - 48 - 12) / ROW));
+        perPage = Math.max(3, Math.min(7, (this.height - top - 4 - 8 - 72 - 12) / ROW));
         int pages = Math.max(1, (packs.size() + perPage - 1) / perPage);
         // open on the page holding the active pack
         if (page < 0 || page >= pages) page = Math.max(0, packs.indexOf(bank().pack()) / perPage);
@@ -108,6 +110,19 @@ public class PackPickerScreen extends Screen {
             setStatus("Made '" + name + "' - record into it from its clickpack screen", GREEN);
         }).dimensions(cx + 3, y, 128, 20).build());
         y += 24;
+        addDrawableChild(ButtonWidget.builder(Text.literal("Rename..."), b -> client.setScreen(new RenamePackScreen(this, bank().pack())))
+            .dimensions(cx - 131, y, 128, 20).tooltip(Tooltip.of(Text.literal("Rename '" + bank().pack() + "'"))).build());
+        addDrawableChild(ButtonWidget.builder(Text.literal("Share as .zip"), b -> {
+            try {
+                java.nio.file.Path zip = Packs.export(bank().pack());
+                setStatus("Saved " + zip.getFileName() + " in config/clicksounds/exported", GREEN);
+                Util.getOperatingSystem().open(zip.getParent().toFile());
+            } catch (Exception e) {
+                setStatus("Couldn't export: " + e.getMessage(), RED);
+            }
+        }).dimensions(cx + 3, y, 128, 20).tooltip(Tooltip.of(Text.literal(
+            "Zip '" + bank().pack() + "' so you can send it to someone. They drop the .zip in their packs folder."))).build());
+        y += 24;
         addDrawableChild(ButtonWidget.builder(Text.literal("Open packs folder"), b -> {
             try {
                 Files.createDirectories(Packs.packsDir());
@@ -116,7 +131,7 @@ public class PackPickerScreen extends Screen {
                 setStatus("Couldn't open folder: " + e.getMessage(), RED);
             }
         }).dimensions(cx - 131, y, 128, 20).tooltip(Tooltip.of(Text.literal(
-            "Drop downloaded clickpacks here (one folder each), then come back to this screen."))).build());
+            "Drop downloaded clickpacks here (a folder or a .zip each), then come back to this screen."))).build());
         addDrawableChild(ButtonWidget.builder(Text.literal("Done"), b -> close()).dimensions(cx + 3, y, 128, 20).build());
     }
 
@@ -144,7 +159,7 @@ public class PackPickerScreen extends Screen {
         b.previewRandom(vol, ClickConfig.variation, ClickConfig.releaseSounds);
     }
 
-    private void setStatus(String s, int color) {
+    void setStatus(String s, int color) {
         status = s;
         statusColor = color;
     }
@@ -158,7 +173,7 @@ public class PackPickerScreen extends Screen {
         List<String> packs = Packs.list();
         if (packs.isEmpty()) ctx.drawCenteredTextWithShadow(this.textRenderer, "No packs yet", cx, top + 40, GRAY);
 
-        int bottom = top + 4 + perPage * ROW + 4 + 48;
+        int bottom = top + 4 + perPage * ROW + 4 + 72;
         ctx.drawCenteredTextWithShadow(this.textRenderer, this.textRenderer.trimToWidth(status, this.width - 8), cx,
             Math.min(this.height - 11, bottom + 2), statusColor);
     }

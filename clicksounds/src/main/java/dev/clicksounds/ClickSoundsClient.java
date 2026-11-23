@@ -130,6 +130,8 @@ public class ClickSoundsClient implements ClientModInitializer {
 
     /** (Re)loads both active packs from disk. */
     public static void loadPacks() {
+        java.util.List<String> imported = Packs.importZips();
+        if (!imported.isEmpty()) LOG.info("Imported clickpack zip(s): {}", imported);
         MOUSE.load(ClickConfig.mousePack);
         KEYBOARD.load(ClickConfig.keyboardPack);
         ClickConfig.mousePack = MOUSE.pack();
@@ -146,21 +148,59 @@ public class ClickSoundsClient implements ClientModInitializer {
             .append(Text.literal(on ? "ON" : "OFF").formatted(on ? Formatting.GREEN : Formatting.RED)), false);
     }
 
+    /** False while sounds shouldn't play: recording, or a menu is open and "Sounds in menus" is off. */
+    private static boolean allowed() {
+        if (recording) return false;
+        return ClickConfig.inMenus || MinecraftClient.getInstance().currentScreen == null;
+    }
+
     /** Called from MouseMixin on every mouse button press / release. */
     public static void onMouseButton(int button, boolean pressed) {
         if (pressed) {
-            if (!recording && ClickConfig.mouseEnabled) MOUSE.press(button, ClickConfig.mouseVolume, ClickConfig.variation);
+            if (allowed() && ClickConfig.mouseEnabled)
+                MOUSE.press(button, buttonName(button), ClickConfig.mouseVolume, ClickConfig.variation, dev.clicksounds.audio.Desk.mouse());
         } else {
             MOUSE.release(button, !recording && ClickConfig.mouseEnabled && ClickConfig.releaseSounds);
         }
+    }
+
+    private static double scrollAccum;
+    private static long lastScrollNanos;
+
+    /** Called from MouseMixin on every scroll event: one sound per wheel notch. */
+    public static void onScroll(double amount) {
+        if (!ClickConfig.scrollSounds || !ClickConfig.mouseEnabled || !allowed() || !MOUSE.hasScroll()) return;
+        long now = System.nanoTime();
+        if (now - lastScrollNanos > 300_000_000L) scrollAccum = 0; // a new scroll gesture
+        lastScrollNanos = now;
+        // touchpads send many tiny steps: add them up so it's still one sound per "notch"
+        scrollAccum += Math.abs(amount);
+        if (scrollAccum < 1.0 - 1e-6) return;
+        scrollAccum = Math.min(scrollAccum - 1.0, 1.0); // one sound per event; a big jump doesn't stack up
+        MOUSE.press(-1000, dev.clicksounds.audio.SampleBank.SCROLL, ClickConfig.mouseVolume, ClickConfig.variation, dev.clicksounds.audio.Desk.mouse());
+        MOUSE.release(-1000, false); // a wheel notch has no release
+    }
+
+    /** Folder name of a mouse button: left, right, middle, back, forward, button6 ... */
+    public static String buttonName(int button) {
+        return switch (button) {
+            case GLFW.GLFW_MOUSE_BUTTON_LEFT -> "left";
+            case GLFW.GLFW_MOUSE_BUTTON_RIGHT -> "right";
+            case GLFW.GLFW_MOUSE_BUTTON_MIDDLE -> "middle";
+            case GLFW.GLFW_MOUSE_BUTTON_4 -> "back";
+            case GLFW.GLFW_MOUSE_BUTTON_5 -> "forward";
+            default -> "button" + (button + 1);
+        };
     }
 
     /** Called from KeyboardMixin on every key press / release (not on hold-repeat). */
     public static void onKey(net.minecraft.client.input.KeyInput input, boolean pressed) {
         int key = input.key();
         if (pressed) {
-            if (!recording && ClickConfig.keyboardEnabled)
-                KEYBOARD.press(key, keyName(input), ClickConfig.keyboardVolume, ClickConfig.variation);
+            if (allowed() && ClickConfig.keyboardEnabled) {
+                String name = keyName(input);
+                KEYBOARD.press(key, name, ClickConfig.keyboardVolume, ClickConfig.variation, dev.clicksounds.audio.Desk.key(name));
+            }
         } else {
             KEYBOARD.release(key, !recording && ClickConfig.keyboardEnabled && ClickConfig.releaseSounds);
         }

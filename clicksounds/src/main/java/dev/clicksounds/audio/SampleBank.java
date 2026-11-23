@@ -29,6 +29,8 @@ public final class SampleBank {
     public static final String ALL = "";
     /** Virtual scope: every per-key take mixed, for keys without their own sounds when there are no shared ones. */
     public static final String MIXED = "*";
+    /** Mouse only: scroll wheel notch sounds (mouse/scroll/...). Never used for clicks. */
+    public static final String SCROLL = "scroll";
 
     public final String device;
     private volatile String pack = Packs.DEFAULT;
@@ -44,10 +46,11 @@ public final class SampleBank {
     private record Data(Map<String, Scope> scopes, float normGain) {}
     private volatile Data data = new Data(Map.of(), 1f);
 
-    private record Held(String scope, Genre genre, int take, float gain, float pitch) {}
+    private record Held(String scope, Genre genre, int take, float gain, float pitch, float pan) {}
     private final Map<Integer, Held> held = new HashMap<>();
     private final Map<String, Integer> last = new HashMap<>();
-    private long lastPressNanos;
+    /** Time of the previous press, per family (clicks/keys vs. scroll), for soft / hard clicks. */
+    private final Map<String, Long> lastPress = new HashMap<>();
     private Genre lastGenre = Genre.NORMAL;
     private String lastScope = ALL;
 
@@ -90,10 +93,10 @@ public final class SampleBank {
     public List<String> ownKeys() {
         List<String> keys = new ArrayList<>();
         for (Map.Entry<String, Scope> e : data.scopes().entrySet())
-            if (!e.getKey().equals(ALL) && !e.getKey().equals(MIXED) && e.getValue().hasClicks()) keys.add(e.getKey());
-        String order = "wasd";
-        keys.sort((a, b) -> { // W A S D first, then the rest alphabetically
-            int ia = a.length() == 1 ? order.indexOf(a) : -1, ib = b.length() == 1 ? order.indexOf(b) : -1;
+            if (!e.getKey().equals(ALL) && !e.getKey().equals(MIXED) && !e.getKey().equals(SCROLL) && e.getValue().hasClicks()) keys.add(e.getKey());
+        List<String> order = List.of("w", "a", "s", "d", "left", "right", "middle", "back", "forward");
+        keys.sort((a, b) -> { // W A S D / mouse buttons in their natural order first, then alphabetically
+            int ia = order.indexOf(a), ib = order.indexOf(b);
             if (ia >= 0 || ib >= 0) return ia < 0 ? 1 : ib < 0 ? -1 : Integer.compare(ia, ib);
             return a.compareTo(b);
         });
@@ -111,13 +114,20 @@ public final class SampleBank {
         return max;
     }
 
-    /** e.g. "10 clicks, 10 soft, 4 hard + keys W A S D" */
+    public boolean hasScroll() {
+        return scope(SCROLL).hasClicks();
+    }
+
+    /** e.g. "10 clicks, 10 soft, 4 hard + own W A S D" / "10 clicks + own Left Right + scroll" */
     public String summary() {
         String base = summary(ALL);
         List<String> keys = ownKeys();
-        if (keys.isEmpty()) return base;
-        StringBuilder b = new StringBuilder(base.equals("empty") ? "keys" : base + " + keys");
-        for (String k : keys) b.append(' ').append(keyLabel(k));
+        StringBuilder b = new StringBuilder(base.equals("empty") && (!keys.isEmpty() || hasScroll()) ? "" : base);
+        if (!keys.isEmpty()) {
+            b.append(b.length() > 0 ? " + own" : "own");
+            for (String k : keys) b.append(' ').append(keyLabel(k));
+        }
+        if (hasScroll()) b.append(b.length() > 0 ? " + scroll" : "scroll");
         return b.toString();
     }
 
@@ -154,9 +164,23 @@ public final class SampleBank {
         reload();
     }
 
+    /** Subfolder holding per-key (keyboard) or per-button (mouse) sounds. */
+    private String ownFolder() {
+        return device.equals(Packs.MOUSE) ? "buttons" : "keys";
+    }
+
     /** Folder holding a scope's genre folders. */
     public Path dir(String scope) {
-        return scope == null || scope.isEmpty() ? dir() : dir().resolve("keys").resolve(scope);
+        if (scope == null || scope.isEmpty()) return dir();
+        if (scope.equals(SCROLL) && device.equals(Packs.MOUSE)) return dir().resolve(SCROLL);
+        return dir().resolve(ownFolder()).resolve(scope);
+    }
+
+    /** Where a scope lives inside the device folder, for showing the user ("buttons/left/"). */
+    public String folderOf(String scope) {
+        if (scope == null || scope.isEmpty()) return "";
+        if (scope.equals(SCROLL) && device.equals(Packs.MOUSE)) return SCROLL + "/";
+        return ownFolder() + "/" + scope + "/";
     }
 
     public void reload() {
@@ -164,7 +188,8 @@ public final class SampleBank {
         Map<String, Scope> scopes = new HashMap<>();
         int[] files = {0};
         scopes.put(ALL, readScope(base, files));
-        Path keys = base.resolve("keys");
+        if (device.equals(Packs.MOUSE)) scopes.put(SCROLL, readScope(base.resolve(SCROLL), files));
+        Path keys = base.resolve(ownFolder());
         if (Files.isDirectory(keys)) {
             try (DirectoryStream<Path> ds = Files.newDirectoryStream(keys, Files::isDirectory)) {
                 for (Path k : ds) scopes.put(k.getFileName().toString().toLowerCase(Locale.ROOT), readScope(k, files));
@@ -179,7 +204,7 @@ public final class SampleBank {
             List<Take> t = new ArrayList<>();
             List<float[]> r = new ArrayList<>();
             for (Map.Entry<String, Scope> e : scopes.entrySet()) {
-                if (e.getKey().equals(ALL)) continue;
+                if (e.getKey().equals(ALL) || e.getKey().equals(SCROLL)) continue;
                 t.addAll(e.getValue().takes().get(g));
                 r.addAll(e.getValue().releases().get(g));
             }
@@ -194,6 +219,7 @@ public final class SampleBank {
         data = new Data(data.scopes(), max > 0f ? Math.min(12f, 0.6f / max) : 1f);
         held.clear();
         last.clear();
+        lastPress.clear();
         ClickSoundsClient.LOG.info("Loaded {} pack '{}': {} ({} files)", device, pack, summary(), files[0]);
     }
 
@@ -314,6 +340,7 @@ public final class SampleBank {
 
     /** Which sounds a key uses: its own if it has any, else the shared ones, else all per-key ones mixed. */
     private String resolveScope(String key) {
+        if (SCROLL.equals(key)) return SCROLL; // the wheel only ever uses scroll sounds
         if (key != null && !key.isEmpty() && scope(key).hasClicks()) return key;
         if (scope(ALL).hasClicks()) return ALL;
         if (scope(MIXED).hasClicks()) return MIXED;
@@ -322,7 +349,8 @@ public final class SampleBank {
 
     /** Which genre a press right now should use, from the time since the previous press. */
     private Genre pickGenre(String sc, long now) {
-        double gapMs = lastPressNanos == 0 ? Double.MAX_VALUE : (now - lastPressNanos) / 1e6;
+        Long prev = lastPress.get(family(sc));
+        double gapMs = prev == null ? Double.MAX_VALUE : (now - prev) / 1e6;
         Genre g = Genre.NORMAL;
         if (ClickConfig.softClicks && gapMs < ClickConfig.softMs && size(sc, Genre.SOFT) > 0) g = Genre.SOFT;
         else if (ClickConfig.hardClicks && gapMs > ClickConfig.hardMs && size(sc, Genre.HARD) > 0) g = Genre.HARD;
@@ -348,20 +376,28 @@ public final class SampleBank {
         return i;
     }
 
+    private static String family(String scope) {
+        return SCROLL.equals(scope) ? SCROLL : "";
+    }
+
     /** A mouse button went down. */
     public void press(int id, float volume, boolean variation) {
-        press(id, null, volume, variation);
+        press(id, null, volume, variation, 0f);
+    }
+
+    public void press(int id, String key, float volume, boolean variation) {
+        press(id, key, volume, variation, 0f);
     }
 
     /**
      * A button / key went down: play a click of the right genre.
      * @param key key folder name ("w", "space", ...) so keys with their own sounds use them; null = shared
      */
-    public void press(int id, String key, float volume, boolean variation) {
+    public void press(int id, String key, float volume, boolean variation, float pan) {
         long now = System.nanoTime();
         String sc = resolveScope(key);
         Genre g = pickGenre(sc, now);
-        lastPressNanos = now;
+        lastPress.put(family(sc), now);
         if (size(sc, g) == 0 || volume <= 0f) return;
         lastGenre = g;
         lastScope = sc;
@@ -372,8 +408,8 @@ public final class SampleBank {
             gain *= 0.85f + r.nextFloat() * 0.15f;
             pitch = 0.96f + r.nextFloat() * 0.08f;
         }
-        held.put(id, new Held(sc, g, i, gain, pitch));
-        AudioEngine.play(takes(sc, g).get(i).press(), gain, pitch);
+        held.put(id, new Held(sc, g, i, gain, pitch, pan));
+        AudioEngine.play(takes(sc, g).get(i).press(), gain, pitch, 0, pan);
     }
 
     /** The same button / key came back up: its paired release, or a random one of that genre. */
@@ -381,14 +417,17 @@ public final class SampleBank {
         Held h = held.remove(id);
         if (!playSound || h == null) return;
         float[] rel = releaseFor(h.scope(), h.genre(), h.take());
-        if (rel != null) AudioEngine.play(rel, h.gain(), h.pitch());
+        if (rel != null) AudioEngine.play(rel, h.gain(), h.pitch(), 0, h.pan());
     }
 
     private float[] releaseFor(String sc, Genre g, int takeIndex) {
         List<Take> list = takes(sc, g);
         if (takeIndex < list.size() && list.get(takeIndex).release() != null) return list.get(takeIndex).release();
-        for (List<float[]> pool : List.of(scope(sc).releases().get(g), scope(sc).releases().get(Genre.NORMAL),
-                scope(ALL).releases().get(g), scope(ALL).releases().get(Genre.NORMAL))) {
+        List<List<float[]>> pools = SCROLL.equals(sc)
+            ? List.of(scope(sc).releases().get(g), scope(sc).releases().get(Genre.NORMAL))
+            : List.of(scope(sc).releases().get(g), scope(sc).releases().get(Genre.NORMAL),
+                scope(ALL).releases().get(g), scope(ALL).releases().get(Genre.NORMAL));
+        for (List<float[]> pool : pools) {
             if (!pool.isEmpty()) return pool.get(ThreadLocalRandom.current().nextInt(pool.size()));
         }
         return null;
@@ -420,7 +459,12 @@ public final class SampleBank {
 
     /** Preview a random normal click the way it sounds in game (variation, release after a natural gap). */
     public void previewRandom(float volume, boolean variation, boolean withRelease) {
-        String sc = resolveScope(null);
+        previewRandom(null, volume, variation, withRelease, 0f, 0);
+    }
+
+    /** Same, for one key / button's sounds, at a stereo position, {@code delayMs} from now. */
+    public void previewRandom(String key, float volume, boolean variation, boolean withRelease, float pan, int delayMs) {
+        String sc = resolveScope(key);
         Genre g = playable(sc, Genre.NORMAL);
         if (size(sc, g) == 0 || volume <= 0f) return;
         int i = pickIndex(sc, g);
@@ -431,12 +475,12 @@ public final class SampleBank {
             pitch = 0.96f + r.nextFloat() * 0.08f;
         }
         Take t = takes(sc, g).get(i);
-        AudioEngine.play(t.press(), gain, pitch);
+        AudioEngine.play(t.press(), gain, pitch, delayMs, pan);
         if (withRelease) {
             int ms = Math.round(t.releaseOffset() * 1000f / AudioEngine.RATE);
-            AudioEngine.play(releaseFor(sc, g, i), gain, pitch, ms);
+            AudioEngine.play(releaseFor(sc, g, i), gain, pitch, delayMs + ms, pan);
         }
-        previewStarts.put(t, System.nanoTime());
+        previewStarts.put(t, System.nanoTime() + delayMs * 1_000_000L);
     }
 
     /** How far into its preview a take is, in frames; -1 if it isn't playing. */

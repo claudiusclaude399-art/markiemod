@@ -29,7 +29,7 @@ public class PackScreen extends Screen {
     private final Screen parent;
     private final boolean mouse;
     private final SampleBank bank;
-    /** "" = shared sounds (all keys), else one key's own sounds. Always "" for the mouse. */
+    /** "" = shared sounds (all keys / buttons), else one key's or button's own sounds (or the mouse wheel). */
     private String scope;
     private Genre genre;
     private int page;
@@ -48,7 +48,7 @@ public class PackScreen extends Screen {
         this.parent = parent;
         this.mouse = mouse;
         this.bank = mouse ? ClickSoundsClient.MOUSE : ClickSoundsClient.KEYBOARD;
-        this.scope = mouse || scope == null ? "" : scope;
+        this.scope = scope == null ? "" : scope;
         this.genre = genre;
     }
 
@@ -73,14 +73,10 @@ public class PackScreen extends Screen {
         confirmDelete = false;
         page = Math.min(page, pages() - 1);
         int cx = this.width / 2;
-        int rows = mouse ? 0 : 1; // the keyboard has the key row on top
-        top = Math.max(28, this.height / 2 - 92 - rows * 12);
+        top = Math.max(28, this.height / 2 - 104);
         int y = top;
-
-        if (!mouse) {
-            y = keyRow(cx, y);
-            y += 24;
-        }
+        if (mouse) buttonRow(cx, y); else keyRow(cx, y);
+        y += 24;
 
         // genre tabs (with page arrows at the ends when a genre has more than 10 takes)
         boolean paged = pages() > 1;
@@ -148,8 +144,34 @@ public class PackScreen extends Screen {
             .dimensions(cx - 155 + 3 * (bw + 4), y, bw, 20).build());
     }
 
+    /** All | Left | Right | Middle | Back | Fwd | Scroll */
+    private void buttonRow(int cx, int y) {
+        String[][] b = {{"", "All", "Shared sounds: used by every button that has no sounds of its own"},
+            {"left", "Left", null}, {"right", "Right", null}, {"middle", "Middle", null},
+            {"back", "Back", "Side button (back)"}, {"forward", "Fwd", "Side button (forward)"},
+            {SampleBank.SCROLL, "Scroll", "Scroll wheel: one sound per notch (turn on/off in Sound options)"}};
+        int w = (310 - 6 * 3) / b.length, x = cx - 155;
+        for (String[] e : b) {
+            boolean selected = scope.equals(e[0]);
+            int n = 0;
+            for (Genre g : Genre.values()) n += bank.size(e[0], g);
+            String tip = e[2] != null ? e[2] + "\n" : "";
+            tip += e[0].isEmpty() ? "" : n > 0 ? "Own sounds: " + bank.summary(e[0])
+                : e[0].equals(SampleBank.SCROLL) ? "No scroll sounds yet" : "No own sounds yet: uses the All sounds";
+            ButtonWidget btn = ButtonWidget.builder(Text.literal(e[1]), x2 -> {
+                scope = e[0];
+                page = 0;
+                status = "";
+                clearAndInit();
+            }).dimensions(x, y, w, 20).tooltip(Tooltip.of(Text.literal(tip.trim()))).build();
+            btn.active = !selected;
+            addDrawableChild(btn);
+            x += w + 3;
+        }
+    }
+
     /** All keys | W | A | S | D | Other key... */
-    private int keyRow(int cx, int y) {
+    private void keyRow(int cx, int y) {
         int x = cx - 155;
         x = keyButton(x, y, 70, "", "All keys", "Shared sounds: used by every key that has no sounds of its own");
         for (String k : WASD) x = keyButton(x, y, 34, k, k.toUpperCase(Locale.ROOT), null);
@@ -163,7 +185,6 @@ public class PackScreen extends Screen {
             "Give any other key (Space, Shift, E ...) its own sounds" + ownKeysLine()))).build();
         other.active = !pickingKey && !otherSelected;
         addDrawableChild(other);
-        return y;
     }
 
     private int keyButton(int x, int y, int w, String key, String label, String tip) {
@@ -192,7 +213,7 @@ public class PackScreen extends Screen {
     }
 
     private String folder() {
-        return scope.isEmpty() ? "" : "keys/" + scope + "/";
+        return bank.folderOf(scope);
     }
 
     private String what() {
@@ -225,18 +246,23 @@ public class PackScreen extends Screen {
         ctx.drawCenteredTextWithShadow(this.textRenderer,
             Text.literal(this.title.getString() + ": " + bank.pack()), cx, Math.max(4, top - 24), WHITE);
         String sub;
-        if (!scope.isEmpty() && bank.size(scope, Genre.NORMAL) + bank.size(scope, Genre.SOFT) + bank.size(scope, Genre.HARD) == 0)
-            sub = SampleBank.keyLabel(scope) + " has no own sounds yet, so it uses the All keys sounds";
+        boolean none = bank.size(scope, Genre.NORMAL) + bank.size(scope, Genre.SOFT) + bank.size(scope, Genre.HARD) == 0;
+        if (none && scope.equals(SampleBank.SCROLL) && mouse)
+            sub = "No scroll sounds yet - hit Record 10 and scroll one notch at a time";
+        else if (none && !scope.isEmpty())
+            sub = SampleBank.keyLabel(scope) + " has no own sounds yet, so it uses the " + (mouse ? "All buttons" : "All keys") + " sounds";
         else {
             sub = genre.description;
             if (genre == Genre.SOFT) sub += " (< " + ClickConfig.softMs + " ms apart)" + (ClickConfig.softClicks ? "" : " - OFF");
             if (genre == Genre.HARD) sub += " (> " + ClickConfig.hardMs + " ms pause)" + (ClickConfig.hardClicks ? "" : " - OFF");
+            if (scope.equals(SampleBank.SCROLL) && mouse) sub = sub.replace("Used for normal clicking", "One sound per wheel notch")
+                .replace("when you click fast (spam)", "when you scroll fast").replace("for the first click after a pause", "for the first notch after a pause");
             if (!scope.isEmpty()) sub = SampleBank.keyLabel(scope) + ": " + sub;
         }
         ctx.drawCenteredTextWithShadow(this.textRenderer, this.textRenderer.trimToWidth(sub, this.width - 8), cx, Math.max(16, top - 12), GRAY);
 
         // one footer line: counts (or the latest status) + colour legend
-        int bottom = top + (mouse ? 0 : 24) + 24 + 5 * ROW + 4 + 20;
+        int bottom = top + 24 + 24 + 5 * ROW + 4 + 20;
         int ly = Math.min(this.height - 22, bottom + 4);
         String left;
         int leftColor;
