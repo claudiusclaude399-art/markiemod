@@ -31,7 +31,7 @@ public class ClickSoundsClient implements ClientModInitializer {
     /** True while the recorder is listening to the mic, so we don't play sounds into it. */
     public static volatile boolean recording = false;
 
-    private static KeyBinding openKey, toggleKey;
+    private static KeyBinding openKey, toggleKey, nextMousePack, nextKeyboardPack;
 
     @Override
     public void onInitializeClient() {
@@ -46,20 +46,86 @@ public class ClickSoundsClient implements ClientModInitializer {
         toggleKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
             "key.clicksounds.toggle", InputUtil.Type.KEYSYM, InputUtil.UNKNOWN_KEY.getCode(), category));
 
+        nextMousePack = KeyBindingHelper.registerKeyBinding(new KeyBinding(
+            "key.clicksounds.next_mouse_pack", InputUtil.Type.KEYSYM, InputUtil.UNKNOWN_KEY.getCode(), category));
+        nextKeyboardPack = KeyBindingHelper.registerKeyBinding(new KeyBinding(
+            "key.clicksounds.next_keyboard_pack", InputUtil.Type.KEYSYM, InputUtil.UNKNOWN_KEY.getCode(), category));
+
         ClientTickEvents.END_CLIENT_TICK.register(mc -> {
+            while (nextMousePack.wasPressed()) announce(mc, true, cyclePack(true));
+            while (nextKeyboardPack.wasPressed()) announce(mc, false, cyclePack(false));
             while (openKey.wasPressed()) {
                 if (mc.currentScreen == null) mc.setScreen(new ClickSoundsScreen(null));
             }
             while (toggleKey.wasPressed()) toggleAll(mc);
         });
 
-        // /clicksounds also opens the menu (queued so the closing chat screen doesn't close it)
+        // /clicksounds opens the menu (queued so the closing chat screen doesn't close it);
+        // /clicksounds pack <mouse|keyboard> <name> switches clickpack
         ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) ->
-            dispatcher.register(ClientCommandManager.literal("clicksounds").executes(ctx -> {
-                MinecraftClient mc = ctx.getSource().getClient();
-                mc.send(() -> mc.setScreen(new ClickSoundsScreen(null)));
+            dispatcher.register(ClientCommandManager.literal("clicksounds")
+                .executes(ctx -> {
+                    MinecraftClient mc = ctx.getSource().getClient();
+                    mc.send(() -> mc.setScreen(new ClickSoundsScreen(null)));
+                    return 1;
+                })
+                .then(ClientCommandManager.literal("pack")
+                    .then(packCommand("mouse", true))
+                    .then(packCommand("keyboard", false)))));
+    }
+
+    private static com.mojang.brigadier.builder.LiteralArgumentBuilder<net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource>
+            packCommand(String device, boolean mouse) {
+        return ClientCommandManager.literal(device)
+            .executes(ctx -> {
+                SampleBank bank = mouse ? MOUSE : KEYBOARD;
+                ctx.getSource().sendFeedback(Text.literal(device + " clickpack: " + bank.pack() + " (" + bank.summary()
+                    + "). Packs: " + String.join(", ", Packs.list())));
                 return 1;
-            })));
+            })
+            .then(ClientCommandManager.argument("name", com.mojang.brigadier.arguments.StringArgumentType.greedyString())
+                .suggests((ctx, b) -> {
+                    String typed = b.getRemaining().toLowerCase(java.util.Locale.ROOT);
+                    for (String p : Packs.list()) if (p.toLowerCase(java.util.Locale.ROOT).startsWith(typed)) b.suggest(p);
+                    return b.buildFuture();
+                })
+                .executes(ctx -> {
+                    String name = com.mojang.brigadier.arguments.StringArgumentType.getString(ctx, "name");
+                    String match = null;
+                    for (String p : Packs.list()) if (p.equalsIgnoreCase(name)) match = p;
+                    if (match == null) {
+                        ctx.getSource().sendError(Text.literal("No clickpack called '" + name + "'. Packs: " + String.join(", ", Packs.list())));
+                        return 0;
+                    }
+                    setPack(mouse, match);
+                    SampleBank bank = mouse ? MOUSE : KEYBOARD;
+                    ctx.getSource().sendFeedback(Text.literal(device + " clickpack set to " + bank.pack() + " (" + bank.summary() + ")"));
+                    return 1;
+                }));
+    }
+
+    /** Switches a device to another clickpack and saves the choice. */
+    public static void setPack(boolean mouse, String pack) {
+        SampleBank bank = mouse ? MOUSE : KEYBOARD;
+        bank.load(pack);
+        if (mouse) ClickConfig.mousePack = bank.pack(); else ClickConfig.keyboardPack = bank.pack();
+        ClickConfig.save();
+    }
+
+    /** Moves a device to the next pack folder (alphabetically, wrapping around). @return the new pack */
+    public static String cyclePack(boolean mouse) {
+        SampleBank bank = mouse ? MOUSE : KEYBOARD;
+        java.util.List<String> packs = Packs.list();
+        if (packs.isEmpty()) return bank.pack();
+        setPack(mouse, packs.get((packs.indexOf(bank.pack()) + 1) % packs.size()));
+        return bank.pack();
+    }
+
+    private static void announce(MinecraftClient mc, boolean mouse, String pack) {
+        SampleBank bank = mouse ? MOUSE : KEYBOARD;
+        mc.inGameHud.setOverlayMessage(Text.literal((mouse ? "Mouse" : "Keyboard") + " clickpack: ")
+            .append(Text.literal(pack).formatted(Formatting.AQUA))
+            .append(Text.literal(" (" + bank.summary() + ")").formatted(Formatting.GRAY)), false);
     }
 
     /** (Re)loads both active packs from disk. */

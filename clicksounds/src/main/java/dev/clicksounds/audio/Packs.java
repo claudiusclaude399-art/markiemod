@@ -65,6 +65,25 @@ public final class Packs {
         return false;
     }
 
+    /** Quick "12 clicks, 4 soft, 3 hard" for a pack's device, from file counts (no audio loading). */
+    public static String summary(String pack, String device) {
+        Path base = deviceDir(pack, device);
+        int[] n = new int[Genre.values().length];
+        for (Genre g : Genre.values()) {
+            Path d = base.resolve(g.clicksFolder);
+            if (!Files.isDirectory(d)) continue;
+            try (DirectoryStream<Path> ds = Files.newDirectoryStream(d, p -> Files.isRegularFile(p) && isAudio(p))) {
+                for (Path ignored : ds) n[g.ordinal()]++;
+            } catch (IOException ignored) {}
+        }
+        int c = n[Genre.NORMAL.ordinal()], so = n[Genre.SOFT.ordinal()], h = n[Genre.HARD.ordinal()];
+        if (c + so + h == 0) return "empty";
+        StringBuilder b = new StringBuilder(c + " click" + (c == 1 ? "" : "s"));
+        if (so > 0) b.append(", ").append(so).append(" soft");
+        if (h > 0) b.append(", ").append(h).append(" hard");
+        return b.toString();
+    }
+
     public static boolean isAudio(Path p) {
         String n = p.getFileName().toString().toLowerCase(Locale.ROOT);
         return n.endsWith(".wav") || n.endsWith(".ogg");

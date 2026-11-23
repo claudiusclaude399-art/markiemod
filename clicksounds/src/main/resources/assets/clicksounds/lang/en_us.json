@@ -1,5 +1,7 @@
 {
   "key.category.clicksounds.main": "Click Sounds",
   "key.clicksounds.open": "Open Click Sounds",
-  "key.clicksounds.toggle": "Toggle click sounds on/off"
+  "key.clicksounds.toggle": "Toggle click sounds on/off",
+  "key.clicksounds.next_mouse_pack": "Next mouse clickpack",
+  "key.clicksounds.next_keyboard_pack": "Next keyboard clickpack"
 }

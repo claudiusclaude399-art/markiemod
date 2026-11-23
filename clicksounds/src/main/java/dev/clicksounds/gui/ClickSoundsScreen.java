@@ -90,20 +90,13 @@ public class ClickSoundsScreen extends Screen {
         addDrawableChild(ButtonWidget.builder(Text.literal("Done"), b -> close()).dimensions(right, y, w, 20).build());
     }
 
-    /** Cycles the device's clickpack through every pack folder. */
+    /** Opens the pack picker for the device. */
     private ButtonWidget packButton(int x, int y, int w, boolean mouse) {
         SampleBank bank = mouse ? ClickSoundsClient.MOUSE : ClickSoundsClient.KEYBOARD;
-        return ButtonWidget.builder(Text.literal((mouse ? "Mouse" : "Keys") + " pack: " + bank.pack()), b -> {
-            List<String> packs = Packs.list();
-            if (packs.isEmpty()) return;
-            String next = packs.get((packs.indexOf(bank.pack()) + 1) % packs.size());
-            if (mouse) ClickConfig.mousePack = next; else ClickConfig.keyboardPack = next;
-            bank.load(next);
-            ClickConfig.save();
-            setStatus((mouse ? "Mouse" : "Keyboard") + " now uses '" + next + "' (" + bank.summary() + ")", GREEN);
-            clearAndInit();
-        }).dimensions(x, y, w, 20).tooltip(Tooltip.of(Text.literal("Click to switch clickpack.\n'" + bank.pack()
-            + "': " + bank.summary()))).build();
+        String label = this.textRenderer.trimToWidth((mouse ? "Mouse pack: " : "Keys pack: ") + bank.pack(), w - 12);
+        return ButtonWidget.builder(Text.literal(label), b -> client.setScreen(new PackPickerScreen(this, mouse)))
+            .dimensions(x, y, w, 20).tooltip(Tooltip.of(Text.literal("Switch clickpack. In use: '" + bank.pack()
+                + "' (" + bank.summary() + ")"))).build();
     }
 
     /** Plays a random click exactly like a real one would (random take + variation + release). */

@@ -41,9 +41,21 @@ Dragging a volume slider plays previews too, and a redone take plays straight aw
 ## Clickpacks
 
 Every set of sounds is a **clickpack**: a folder in `config/clicksounds/packs/`. Your recordings go
-in the pack called `My clicks`. The mouse and the keyboard each pick their own pack (the
-**Mouse pack / Keys pack** buttons cycle through every pack folder), so you can e.g. use a downloaded
-pack for the mouse and your own recording for the keyboard.
+in the pack called `My clicks`. The mouse and the keyboard each use their own pack, so you can e.g.
+use a downloaded pack for the mouse and your own recording for the keyboard.
+
+### Switching clickpacks
+
+Mouse and keyboard work the same way, and each can be switched on its own:
+
+- **Pack picker:** click **Mouse pack: ...** or **Keys pack: ...** in the menu. It lists every pack with
+  what it holds for that device (e.g. "12 clicks, 4 soft, 3 hard"); press ▶ to hear a pack without
+  switching, click its name to use it. Mouse / Keyboard tabs at the top, plus **Use for keyboard too**
+  (or mouse) to give both the same pack.
+- **Hotkeys:** **Next mouse clickpack** and **Next keyboard clickpack** (Controls > Click Sounds,
+  unbound by default) switch to the next pack mid-game and show its name on screen.
+- **Command:** `/clicksounds pack mouse <name>` or `/clicksounds pack keyboard <name>` (Tab completes
+  pack names). `/clicksounds pack mouse` on its own shows the current pack and all packs.
 
 ```
 packs/<Pack name>/
@@ -65,7 +77,8 @@ packs/<Pack name>/
 - Packs made for Geometry Dash clickbots (the genre folders directly in the pack folder, or in
   `player1/`) work as **mouse** packs as they are. Just drop the folder into `packs/` and hit
   **Reload packs**.
-- **New pack** (in a clickpack screen) makes an empty pack to record into; rename its folder any time.
+- **New pack** (in the pack picker or a clickpack screen) makes an empty pack to record into; rename
+  its folder any time.
 
 ### Soft and hard clicks (optional)
 
@@ -85,7 +98,7 @@ them, click lightly for soft clicks and firmly for hard clicks.
 
 | Setting | What it does |
 | --- | --- |
-| Mouse pack / Keys pack | Which clickpack each device uses. |
+| Mouse pack / Keys pack | Opens the pack picker for that device. |
 | Mouse / Keyboard sounds | On/off per type. There's also an unbound **Toggle click sounds** hotkey in Controls. |
 | Mouse / Keyboard volume | 0-200%. One loudness level per pack, so soft clicks stay softer than hard ones. |
 | Sound options: Release sounds | Play the release sound when you let go. |
