@@ -25,18 +25,31 @@ import java.util.concurrent.ThreadLocalRandom;
 public final class SampleBank {
     public static final int TAKES = 10;
 
+    /** Scope of the shared sounds (keyboard/clicks/ ...): every key without its own sounds uses these. */
+    public static final String ALL = "";
+    /** Virtual scope: every per-key take mixed, for keys without their own sounds when there are no shared ones. */
+    public static final String MIXED = "*";
+
     public final String device;
     private volatile String pack = Packs.DEFAULT;
 
-    /** Immutable snapshot, swapped whole when a pack is (re)loaded. */
-    private record Data(EnumMap<Genre, List<Take>> takes, EnumMap<Genre, List<float[]>> releases, float normGain) {}
-    private volatile Data data = new Data(emptyTakes(), emptyReleases(), 1f);
+    /** One set of genre folders: the shared one, or one key's (keyboard/keys/w/...). */
+    private record Scope(EnumMap<Genre, List<Take>> takes, EnumMap<Genre, List<float[]>> releases) {
+        int size(Genre g) { return takes.get(g).size(); }
+        boolean hasClicks() { for (Genre g : Genre.values()) if (size(g) > 0) return true; return false; }
+    }
+    private static final Scope EMPTY = new Scope(emptyTakes(), emptyReleases());
 
-    private record Held(Genre genre, int take, float gain, float pitch) {}
+    /** Immutable snapshot, swapped whole when a pack is (re)loaded. */
+    private record Data(Map<String, Scope> scopes, float normGain) {}
+    private volatile Data data = new Data(Map.of(), 1f);
+
+    private record Held(String scope, Genre genre, int take, float gain, float pitch) {}
     private final Map<Integer, Held> held = new HashMap<>();
-    private final EnumMap<Genre, Integer> last = new EnumMap<>(Genre.class);
+    private final Map<String, Integer> last = new HashMap<>();
     private long lastPressNanos;
     private Genre lastGenre = Genre.NORMAL;
+    private String lastScope = ALL;
 
     private static final Map<Take, Long> previewStarts = new IdentityHashMap<>();
 
@@ -56,30 +69,77 @@ public final class SampleBank {
         return m;
     }
 
+    private Scope scope(String name) {
+        return data.scopes().getOrDefault(name == null ? ALL : name, EMPTY);
+    }
+
     // ---- info ----
 
     public String pack() { return pack; }
-    public List<Take> takes(Genre g) { return data.takes().get(g); }
-    public int size(Genre g) { return takes(g).size(); }
-    public int releaseCount(Genre g) { return data.releases().get(g).size(); }
-    public boolean isEmpty() { for (Genre g : Genre.values()) if (size(g) > 0) return false; return true; }
+    public List<Take> takes(Genre g) { return takes(ALL, g); }
+    public List<Take> takes(String scope, Genre g) { return scope(scope).takes().get(g); }
+    public int size(Genre g) { return size(ALL, g); }
+    public int size(String scope, Genre g) { return takes(scope, g).size(); }
+    public int releaseCount(Genre g) { return releaseCount(ALL, g); }
+    public int releaseCount(String scope, Genre g) { return scope(scope).releases().get(g).size(); }
+    public boolean isEmpty() { for (Scope sc : data.scopes().values()) if (sc.hasClicks()) return false; return true; }
     public Genre lastGenre() { return lastGenre; }
+    public String lastScope() { return lastScope; }
 
-    /** Loudest point across every genre, for scaling waveforms consistently. */
+    /** Keys that have their own sounds in this pack (folder names, e.g. "w", "space"). */
+    public List<String> ownKeys() {
+        List<String> keys = new ArrayList<>();
+        for (Map.Entry<String, Scope> e : data.scopes().entrySet())
+            if (!e.getKey().equals(ALL) && !e.getKey().equals(MIXED) && e.getValue().hasClicks()) keys.add(e.getKey());
+        String order = "wasd";
+        keys.sort((a, b) -> { // W A S D first, then the rest alphabetically
+            int ia = a.length() == 1 ? order.indexOf(a) : -1, ib = b.length() == 1 ? order.indexOf(b) : -1;
+            if (ia >= 0 || ib >= 0) return ia < 0 ? 1 : ib < 0 ? -1 : Integer.compare(ia, ib);
+            return a.compareTo(b);
+        });
+        return keys;
+    }
+
+    /** Loudest point across everything in the pack, for scaling waveforms consistently. */
     public float peak() {
         float max = 0f;
-        for (List<Take> l : data.takes().values()) for (Take t : l) max = Math.max(max, t.peak());
-        for (List<float[]> l : data.releases().values()) for (float[] r : l) max = Math.max(max, Wav.peak(r));
+        for (Map.Entry<String, Scope> e : data.scopes().entrySet()) {
+            if (e.getKey().equals(MIXED)) continue;
+            for (List<Take> l : e.getValue().takes().values()) for (Take t : l) max = Math.max(max, t.peak());
+            for (List<float[]> l : e.getValue().releases().values()) for (float[] r : l) max = Math.max(max, Wav.peak(r));
+        }
         return max;
     }
 
-    /** e.g. "10 clicks, 10 soft, 4 hard" */
+    /** e.g. "10 clicks, 10 soft, 4 hard + keys W A S D" */
     public String summary() {
-        int n = size(Genre.NORMAL), s = size(Genre.SOFT), h = size(Genre.HARD);
+        String base = summary(ALL);
+        List<String> keys = ownKeys();
+        if (keys.isEmpty()) return base;
+        StringBuilder b = new StringBuilder(base.equals("empty") ? "keys" : base + " + keys");
+        for (String k : keys) b.append(' ').append(keyLabel(k));
+        return b.toString();
+    }
+
+    public String summary(String scope) {
+        int n = size(scope, Genre.NORMAL), s = size(scope, Genre.SOFT), h = size(scope, Genre.HARD);
         if (n + s + h == 0) return "empty";
         StringBuilder b = new StringBuilder(n + " click" + (n == 1 ? "" : "s"));
         if (s > 0) b.append(", ").append(s).append(" soft");
         if (h > 0) b.append(", ").append(h).append(" hard");
+        return b.toString();
+    }
+
+    /** "w" -> "W", "left.shift" -> "Left Shift" */
+    public static String keyLabel(String key) {
+        if (key == null || key.isEmpty()) return "All keys";
+        if (key.length() == 1) return key.toUpperCase(Locale.ROOT);
+        StringBuilder b = new StringBuilder();
+        for (String part : key.split("\\.")) {
+            if (part.isEmpty()) continue;
+            if (b.length() > 0) b.append(' ');
+            b.append(Character.toUpperCase(part.charAt(0))).append(part.substring(1));
+        }
         return b.toString();
     }
 
@@ -94,11 +154,52 @@ public final class SampleBank {
         reload();
     }
 
+    /** Folder holding a scope's genre folders. */
+    public Path dir(String scope) {
+        return scope == null || scope.isEmpty() ? dir() : dir().resolve("keys").resolve(scope);
+    }
+
     public void reload() {
         Path base = dir();
+        Map<String, Scope> scopes = new HashMap<>();
+        int[] files = {0};
+        scopes.put(ALL, readScope(base, files));
+        Path keys = base.resolve("keys");
+        if (Files.isDirectory(keys)) {
+            try (DirectoryStream<Path> ds = Files.newDirectoryStream(keys, Files::isDirectory)) {
+                for (Path k : ds) scopes.put(k.getFileName().toString().toLowerCase(Locale.ROOT), readScope(k, files));
+            } catch (IOException e) {
+                ClickSoundsClient.LOG.warn("Could not list {}", keys, e);
+            }
+        }
+        // every per-key take together, for the other keys when there are no shared sounds
+        EnumMap<Genre, List<Take>> mixT = emptyTakes();
+        EnumMap<Genre, List<float[]>> mixR = emptyReleases();
+        for (Genre g : Genre.values()) {
+            List<Take> t = new ArrayList<>();
+            List<float[]> r = new ArrayList<>();
+            for (Map.Entry<String, Scope> e : scopes.entrySet()) {
+                if (e.getKey().equals(ALL)) continue;
+                t.addAll(e.getValue().takes().get(g));
+                r.addAll(e.getValue().releases().get(g));
+            }
+            mixT.put(g, Collections.unmodifiableList(t));
+            mixR.put(g, Collections.unmodifiableList(r));
+        }
+        scopes.put(MIXED, new Scope(mixT, mixR));
+
+        data = new Data(Map.copyOf(scopes), 1f);
+        float max = peak();
+        // one gain for the whole pack: soft clicks stay softer than hard ones
+        data = new Data(data.scopes(), max > 0f ? Math.min(12f, 0.6f / max) : 1f);
+        held.clear();
+        last.clear();
+        ClickSoundsClient.LOG.info("Loaded {} pack '{}': {} ({} files)", device, pack, summary(), files[0]);
+    }
+
+    private static Scope readScope(Path base, int[] files) {
         EnumMap<Genre, List<Take>> takes = emptyTakes();
         EnumMap<Genre, List<float[]>> releases = emptyReleases();
-        int files = 0;
         for (Genre g : Genre.values()) {
             TreeMap<String, Path> clickFiles = audioFiles(base.resolve(g.clicksFolder));
             TreeMap<String, Path> releaseFiles = audioFiles(base.resolve(g.releasesFolder));
@@ -109,26 +210,19 @@ public final class SampleBank {
                 if (r == null) continue;
                 rel.put(e.getKey(), r);
                 relList.add(r);
-                files++;
+                files[0]++;
             }
             List<Take> list = new ArrayList<>();
             for (Map.Entry<String, Path> e : clickFiles.entrySet()) {
                 float[] p = read(e.getValue());
                 if (p == null) continue;
                 list.add(new Take(Packs.baseName(e.getValue()), p, rel.get(e.getKey())));
-                files++;
+                files[0]++;
             }
             takes.put(g, Collections.unmodifiableList(list));
             releases.put(g, Collections.unmodifiableList(relList));
         }
-        float max = 0f;
-        for (List<Take> l : takes.values()) for (Take t : l) max = Math.max(max, t.peak());
-        for (List<float[]> l : releases.values()) for (float[] r : l) max = Math.max(max, Wav.peak(r));
-        // one gain for the whole pack: soft clicks stay softer than hard ones
-        data = new Data(takes, releases, max > 0f ? Math.min(12f, 0.6f / max) : 1f);
-        held.clear();
-        last.clear();
-        ClickSoundsClient.LOG.info("Loaded {} pack '{}': {} ({} files)", device, pack, summary(), files);
+        return new Scope(takes, releases);
     }
 
     /** Audio files in a folder, keyed by lower-case name without extension, sorted naturally (2 before 10). */
@@ -162,9 +256,9 @@ public final class SampleBank {
         }
     }
 
-    /** Replaces every take of one genre with a fresh recording (files 01.wav ... 10.wav). */
-    public void replaceAll(Genre g, List<Take> fresh) throws IOException {
-        Path base = dir();
+    /** Replaces every take of one genre (of the shared sounds, or of one key) with a fresh recording (01.wav ... 10.wav). */
+    public void replaceAll(String scope, Genre g, List<Take> fresh) throws IOException {
+        Path base = dir(scope);
         deleteAudio(base.resolve(g.clicksFolder), null);
         deleteAudio(base.resolve(g.releasesFolder), null);
         for (int i = 0; i < fresh.size(); i++) write(base, g, String.format(Locale.ROOT, "%02d", i + 1), fresh.get(i));
@@ -172,9 +266,9 @@ public final class SampleBank {
     }
 
     /** Replaces one take (keeping its file name), or adds it if {@code index} is past the end. */
-    public void replaceTake(Genre g, int index, Take take) throws IOException {
-        Path base = dir();
-        List<Take> list = takes(g);
+    public void replaceTake(String scope, Genre g, int index, Take take) throws IOException {
+        Path base = dir(scope);
+        List<Take> list = takes(scope, g);
         String name;
         if (index >= 0 && index < list.size()) {
             name = list.get(index).name();
@@ -189,12 +283,12 @@ public final class SampleBank {
         reload();
     }
 
-    public void clear(Genre g) {
+    public void clear(String scope, Genre g) {
         try {
-            deleteAudio(dir().resolve(g.clicksFolder), null);
-            deleteAudio(dir().resolve(g.releasesFolder), null);
+            deleteAudio(dir(scope).resolve(g.clicksFolder), null);
+            deleteAudio(dir(scope).resolve(g.releasesFolder), null);
         } catch (IOException e) {
-            ClickSoundsClient.LOG.warn("Could not delete {} {}", pack, g, e);
+            ClickSoundsClient.LOG.warn("Could not delete {} {} {}", pack, scope, g, e);
         }
         reload();
     }
@@ -218,72 +312,93 @@ public final class SampleBank {
 
     // ---- playback ----
 
+    /** Which sounds a key uses: its own if it has any, else the shared ones, else all per-key ones mixed. */
+    private String resolveScope(String key) {
+        if (key != null && !key.isEmpty() && scope(key).hasClicks()) return key;
+        if (scope(ALL).hasClicks()) return ALL;
+        if (scope(MIXED).hasClicks()) return MIXED;
+        return ALL;
+    }
+
     /** Which genre a press right now should use, from the time since the previous press. */
-    private Genre pickGenre(long now) {
+    private Genre pickGenre(String sc, long now) {
         double gapMs = lastPressNanos == 0 ? Double.MAX_VALUE : (now - lastPressNanos) / 1e6;
         Genre g = Genre.NORMAL;
-        if (ClickConfig.softClicks && gapMs < ClickConfig.softMs && size(Genre.SOFT) > 0) g = Genre.SOFT;
-        else if (ClickConfig.hardClicks && gapMs > ClickConfig.hardMs && size(Genre.HARD) > 0) g = Genre.HARD;
-        return playable(g);
+        if (ClickConfig.softClicks && gapMs < ClickConfig.softMs && size(sc, Genre.SOFT) > 0) g = Genre.SOFT;
+        else if (ClickConfig.hardClicks && gapMs > ClickConfig.hardMs && size(sc, Genre.HARD) > 0) g = Genre.HARD;
+        return playable(sc, g);
     }
 
     /** The genre itself if it has clicks, otherwise normal, otherwise whatever has clicks. */
-    private Genre playable(Genre g) {
-        if (size(g) > 0) return g;
-        if (size(Genre.NORMAL) > 0) return Genre.NORMAL;
-        for (Genre o : Genre.values()) if (size(o) > 0) return o;
+    private Genre playable(String sc, Genre g) {
+        if (size(sc, g) > 0) return g;
+        if (size(sc, Genre.NORMAL) > 0) return Genre.NORMAL;
+        for (Genre o : Genre.values()) if (size(sc, o) > 0) return o;
         return g;
     }
 
-    private int pickIndex(Genre g) {
-        int n = size(g);
+    private int pickIndex(String sc, Genre g) {
+        int n = size(sc, g);
         ThreadLocalRandom r = ThreadLocalRandom.current();
         int i = r.nextInt(n);
-        Integer prev = last.get(g);
+        String k = sc + "/" + g;
+        Integer prev = last.get(k);
         if (n > 1 && prev != null && i == prev) i = (i + 1 + r.nextInt(n - 1)) % n; // never the same twice in a row
-        last.put(g, i);
+        last.put(k, i);
         return i;
     }
 
-    /** A button / key went down: play a click of the right genre. */
+    /** A mouse button went down. */
     public void press(int id, float volume, boolean variation) {
+        press(id, null, volume, variation);
+    }
+
+    /**
+     * A button / key went down: play a click of the right genre.
+     * @param key key folder name ("w", "space", ...) so keys with their own sounds use them; null = shared
+     */
+    public void press(int id, String key, float volume, boolean variation) {
         long now = System.nanoTime();
-        Genre g = pickGenre(now);
+        String sc = resolveScope(key);
+        Genre g = pickGenre(sc, now);
         lastPressNanos = now;
-        if (size(g) == 0 || volume <= 0f) return;
+        if (size(sc, g) == 0 || volume <= 0f) return;
         lastGenre = g;
-        int i = pickIndex(g);
+        lastScope = sc;
+        int i = pickIndex(sc, g);
         ThreadLocalRandom r = ThreadLocalRandom.current();
         float gain = volume * data.normGain(), pitch = 1f;
         if (variation) {
             gain *= 0.85f + r.nextFloat() * 0.15f;
             pitch = 0.96f + r.nextFloat() * 0.08f;
         }
-        held.put(id, new Held(g, i, gain, pitch));
-        AudioEngine.play(takes(g).get(i).press(), gain, pitch);
+        held.put(id, new Held(sc, g, i, gain, pitch));
+        AudioEngine.play(takes(sc, g).get(i).press(), gain, pitch);
     }
 
     /** The same button / key came back up: its paired release, or a random one of that genre. */
     public void release(int id, boolean playSound) {
         Held h = held.remove(id);
         if (!playSound || h == null) return;
-        float[] rel = releaseFor(h.genre(), h.take());
+        float[] rel = releaseFor(h.scope(), h.genre(), h.take());
         if (rel != null) AudioEngine.play(rel, h.gain(), h.pitch());
     }
 
-    private float[] releaseFor(Genre g, int takeIndex) {
-        List<Take> list = takes(g);
+    private float[] releaseFor(String sc, Genre g, int takeIndex) {
+        List<Take> list = takes(sc, g);
         if (takeIndex < list.size() && list.get(takeIndex).release() != null) return list.get(takeIndex).release();
-        List<float[]> pool = data.releases().get(g);
-        if (pool.isEmpty()) pool = data.releases().get(Genre.NORMAL);
-        return pool.isEmpty() ? null : pool.get(ThreadLocalRandom.current().nextInt(pool.size()));
+        for (List<float[]> pool : List.of(scope(sc).releases().get(g), scope(sc).releases().get(Genre.NORMAL),
+                scope(ALL).releases().get(g), scope(ALL).releases().get(Genre.NORMAL))) {
+            if (!pool.isEmpty()) return pool.get(ThreadLocalRandom.current().nextInt(pool.size()));
+        }
+        return null;
     }
 
     // ---- previews ----
 
     /** Preview one take, starting {@code delayMs} from now. Remembers when, so waveforms can draw a playhead. */
-    public void preview(Genre g, int index, float volume, int delayMs) {
-        List<Take> list = takes(g);
+    public void preview(String sc, Genre g, int index, float volume, int delayMs) {
+        List<Take> list = takes(sc, g);
         if (index < 0 || index >= list.size()) return;
         Take t = list.get(index);
         float gain = volume * data.normGain();
@@ -293,11 +408,11 @@ public final class SampleBank {
     }
 
     /** Plays every take of a genre one after another. @return total length in ms */
-    public int previewAll(Genre g, float volume) {
-        List<Take> list = takes(g);
+    public int previewAll(String sc, Genre g, float volume) {
+        List<Take> list = takes(sc, g);
         int at = 0;
         for (int i = 0; i < list.size(); i++) {
-            preview(g, i, volume, at);
+            preview(sc, g, i, volume, at);
             at += Math.round(list.get(i).lengthMs()) + 250;
         }
         return at;
@@ -305,20 +420,21 @@ public final class SampleBank {
 
     /** Preview a random normal click the way it sounds in game (variation, release after a natural gap). */
     public void previewRandom(float volume, boolean variation, boolean withRelease) {
-        Genre g = playable(Genre.NORMAL);
-        if (size(g) == 0 || volume <= 0f) return;
-        int i = pickIndex(g);
+        String sc = resolveScope(null);
+        Genre g = playable(sc, Genre.NORMAL);
+        if (size(sc, g) == 0 || volume <= 0f) return;
+        int i = pickIndex(sc, g);
         ThreadLocalRandom r = ThreadLocalRandom.current();
         float gain = volume * data.normGain(), pitch = 1f;
         if (variation) {
             gain *= 0.85f + r.nextFloat() * 0.15f;
             pitch = 0.96f + r.nextFloat() * 0.08f;
         }
-        Take t = takes(g).get(i);
+        Take t = takes(sc, g).get(i);
         AudioEngine.play(t.press(), gain, pitch);
         if (withRelease) {
             int ms = Math.round(t.releaseOffset() * 1000f / AudioEngine.RATE);
-            AudioEngine.play(releaseFor(g, i), gain, pitch, ms);
+            AudioEngine.play(releaseFor(sc, g, i), gain, pitch, ms);
         }
         previewStarts.put(t, System.nanoTime());
     }

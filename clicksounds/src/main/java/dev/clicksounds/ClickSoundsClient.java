@@ -156,11 +156,28 @@ public class ClickSoundsClient implements ClientModInitializer {
     }
 
     /** Called from KeyboardMixin on every key press / release (not on hold-repeat). */
-    public static void onKey(int key, boolean pressed) {
+    public static void onKey(net.minecraft.client.input.KeyInput input, boolean pressed) {
+        int key = input.key();
         if (pressed) {
-            if (!recording && ClickConfig.keyboardEnabled) KEYBOARD.press(key, ClickConfig.keyboardVolume, ClickConfig.variation);
+            if (!recording && ClickConfig.keyboardEnabled)
+                KEYBOARD.press(key, keyName(input), ClickConfig.keyboardVolume, ClickConfig.variation);
         } else {
             KEYBOARD.release(key, !recording && ClickConfig.keyboardEnabled && ClickConfig.releaseSounds);
+        }
+    }
+
+    /**
+     * Layout-independent name of a key, also used as its folder name in a pack: "w", "space",
+     * "left.shift", ... (from Minecraft's key.keyboard.* names). Null for unknown keys.
+     */
+    public static String keyName(net.minecraft.client.input.KeyInput input) {
+        try {
+            String t = InputUtil.fromKeyCode(input).getTranslationKey();
+            String prefix = "key.keyboard.";
+            if (t == null || !t.startsWith(prefix) || t.endsWith(".unknown")) return null;
+            return t.substring(prefix.length());
+        } catch (Exception e) {
+            return null;
         }
     }
 }

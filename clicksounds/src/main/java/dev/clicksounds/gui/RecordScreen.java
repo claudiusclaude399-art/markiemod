@@ -66,30 +66,33 @@ public class RecordScreen extends Screen {
     private long lastRejected = -1;
 
     private final Genre genre;
+    /** Key whose own sounds are recorded ("w", "space", ...), or "" for the shared keyboard sounds. */
+    private final String key;
 
-    public RecordScreen(Screen parent, boolean mouse, Genre genre, int slot, StatusSink onDone) {
-        super(Text.literal(title(mouse, genre, slot)));
+    public RecordScreen(Screen parent, boolean mouse, String key, Genre genre, int slot, StatusSink onDone) {
+        super(Text.literal(title(mouse, key, genre, slot)));
         this.parent = parent;
         this.mouse = mouse;
+        this.key = key == null ? "" : key;
         this.genre = genre;
         this.slot = slot;
         this.bank = mouse ? ClickSoundsClient.MOUSE : ClickSoundsClient.KEYBOARD;
         this.onDone = onDone;
     }
 
-    private static String title(boolean mouse, Genre genre, int slot) {
-        String what = genre == Genre.NORMAL ? (mouse ? "mouse clicks" : "key presses")
-            : genre == Genre.SOFT ? (mouse ? "soft mouse clicks" : "soft key presses")
-            : (mouse ? "hard mouse clicks" : "hard key presses");
-        return slot < 0 ? "Recording 10 " + what : "Redo " + what.substring(0, what.length() - (what.endsWith("ses") ? 2 : 1)) + " " + (slot + 1);
+    private static String title(boolean mouse, String key, Genre genre, int slot) {
+        String kind = genre == Genre.NORMAL ? "" : genre == Genre.SOFT ? "soft " : "hard ";
+        String what = mouse ? kind + "mouse click" : key == null || key.isEmpty() ? kind + "key press"
+            : kind + SampleBank.keyLabel(key) + " press";
+        return slot < 0 ? "Recording 10 " + what + (what.endsWith("ss") ? "es" : "s") : "Redo " + what + " " + (slot + 1);
     }
 
     private String instruction() {
-        String act = mouse ? "Click your mouse" : "Press W, A, S or D";
+        String act = mouse ? "Click your mouse" : key.isEmpty() ? "Press W, A, S or D" : "Press " + SampleBank.keyLabel(key);
         return switch (genre) {
             case NORMAL -> act + " like you normally do - press and let go";
             case SOFT -> act + " lightly, like when spam-clicking - press and let go";
-            case HARD -> act + " firmly, like the first click after a pause";
+            case HARD -> act + " firmly, like the first press after a pause";
         };
     }
 
@@ -154,8 +157,13 @@ public class RecordScreen extends Screen {
             cancel(mic == null ? null : "Recording cancelled - nothing was changed");
             return true;
         }
+        if (mouse) return true;
+        if (!key.isEmpty() && !key.equals(ClickSoundsClient.keyName(input))) {
+            setStatus("That's not " + SampleBank.keyLabel(key) + " - only " + SampleBank.keyLabel(key) + " is recorded here", YELLOW);
+            return true;
+        }
         // heldKeys filters out key-repeat while a key is held down
-        if (!mouse && heldKeys.add(input.key())) onPress(input.key());
+        if (heldKeys.add(input.key())) onPress(input.key());
         return true;
     }
 
@@ -211,18 +219,19 @@ public class RecordScreen extends Screen {
 
     private void finish() {
         stopMic();
-        String what = genre.title.toLowerCase(java.util.Locale.ROOT);
-        PackScreen review = parent instanceof PackScreen ps && ps.genre() == genre ? ps : new PackScreen(parent, mouse, genre);
+        String what = (key.isEmpty() ? "" : SampleBank.keyLabel(key) + " ") + genre.title.toLowerCase(java.util.Locale.ROOT);
+        PackScreen review = parent instanceof PackScreen ps && ps.genre() == genre && ps.scope().equals(key)
+            ? ps : new PackScreen(parent, mouse, key, genre);
         try {
             if (slot < 0) {
-                bank.replaceAll(genre, takes);
+                bank.replaceAll(key, genre, takes);
                 review.setStatus("Saved 10 " + what + " to '" + bank.pack() + "'! Click a wave to hear it.", GREEN);
             } else {
-                bank.replaceTake(genre, slot, takes.get(0));
-                int idx = Math.min(slot, bank.size(genre) - 1);
+                bank.replaceTake(key, genre, slot, takes.get(0));
+                int idx = Math.min(slot, bank.size(key, genre) - 1);
                 review.setStatus("Saved " + what + " take " + (idx + 1), GREEN);
                 // let them hear the new take right away (the mic is already off)
-                bank.preview(genre, idx, Math.max(0.3f, mouse ? ClickConfig.mouseVolume : ClickConfig.keyboardVolume), 150);
+                bank.preview(key, genre, idx, Math.max(0.3f, mouse ? ClickConfig.mouseVolume : ClickConfig.keyboardVolume), 150);
             }
             report("Saved " + what, GREEN);
         } catch (Exception e) {

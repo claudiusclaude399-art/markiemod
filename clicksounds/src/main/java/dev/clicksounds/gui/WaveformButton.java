@@ -19,19 +19,21 @@ public class WaveformButton extends ClickableWidget {
     private static final int LABEL_W = 14;
 
     private final SampleBank bank;
+    private final String scope;
     private final Genre genre;
     private final int index;
     private final Supplier<Float> volume;
     private final Waveforms.TakeShape shape;
     private final float gain;
 
-    public WaveformButton(int x, int y, int w, int h, SampleBank bank, Genre genre, int index, Supplier<Float> volume) {
+    public WaveformButton(int x, int y, int w, int h, SampleBank bank, String scope, Genre genre, int index, Supplier<Float> volume) {
         super(x, y, w, h, Text.literal("Take " + (index + 1)));
         this.bank = bank;
+        this.scope = scope;
         this.genre = genre;
         this.index = index;
         this.volume = volume;
-        java.util.List<Take> takes = bank.takes(genre);
+        java.util.List<Take> takes = bank.takes(scope, genre);
         Take t = index < takes.size() ? takes.get(index) : null;
         int longest = 0; // same time scale for every take in the bank, so they're comparable
         for (Take other : takes) longest = Math.max(longest, other.timelineLength());
@@ -41,7 +43,7 @@ public class WaveformButton extends ClickableWidget {
         this.active = t != null;
         if (t != null) {
             String rel = t.release() != null ? "click + release"
-                : bank.releaseCount(genre) > 0 || bank.releaseCount(Genre.NORMAL) > 0 ? "click (+ a random release in game)" : "click only";
+                : bank.releaseCount(scope, genre) > 0 || bank.releaseCount(scope, Genre.NORMAL) > 0 || bank.releaseCount(Genre.NORMAL) > 0 ? "click (+ a random release in game)" : "click only";
             setTooltip(Tooltip.of(Text.literal(String.format(Locale.ROOT, "%s: %s, %.0f ms\nClick to play",
                 t.name() == null ? "Take " + (index + 1) : t.name(), rel, t.lengthMs()))));
         }
@@ -68,7 +70,7 @@ public class WaveformButton extends ClickableWidget {
 
     @Override
     public void onClick(Click click, boolean doubled) {
-        bank.preview(genre, index, Math.max(0.3f, volume.get()), 0);
+        bank.preview(scope, genre, index, Math.max(0.3f, volume.get()), 0);
     }
 
     @Override

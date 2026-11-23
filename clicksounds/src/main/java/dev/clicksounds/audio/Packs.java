@@ -77,10 +77,31 @@ public final class Packs {
             } catch (IOException ignored) {}
         }
         int c = n[Genre.NORMAL.ordinal()], so = n[Genre.SOFT.ordinal()], h = n[Genre.HARD.ordinal()];
-        if (c + so + h == 0) return "empty";
-        StringBuilder b = new StringBuilder(c + " click" + (c == 1 ? "" : "s"));
-        if (so > 0) b.append(", ").append(so).append(" soft");
-        if (h > 0) b.append(", ").append(h).append(" hard");
+        int keys = 0;
+        Path k = base.resolve("keys");
+        if (Files.isDirectory(k)) {
+            try (DirectoryStream<Path> ds = Files.newDirectoryStream(k, Files::isDirectory)) {
+                for (Path key : ds) {
+                    boolean any = false;
+                    for (Genre g : Genre.values()) {
+                        Path d = key.resolve(g.clicksFolder);
+                        if (!Files.isDirectory(d)) continue;
+                        try (DirectoryStream<Path> f = Files.newDirectoryStream(d, p -> Files.isRegularFile(p) && isAudio(p))) {
+                            if (f.iterator().hasNext()) any = true;
+                        }
+                    }
+                    if (any) keys++;
+                }
+            } catch (IOException ignored) {}
+        }
+        if (c + so + h == 0 && keys == 0) return "empty";
+        StringBuilder b = new StringBuilder();
+        if (c + so + h > 0) {
+            b.append(c).append(" click").append(c == 1 ? "" : "s");
+            if (so > 0) b.append(", ").append(so).append(" soft");
+            if (h > 0) b.append(", ").append(h).append(" hard");
+        }
+        if (keys > 0) b.append(b.length() > 0 ? " + " : "").append(keys).append(keys == 1 ? " own key" : " own keys");
         return b.toString();
     }
 

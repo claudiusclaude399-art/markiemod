@@ -9,7 +9,7 @@ click or press a key, so viewers still hear you clicking.
   can be dropped straight in.
 - **Mouse:** record 10 clicks. Every mouse button press plays a random one of the 10.
 - **Keyboard:** record 10 key presses (W, A, S, D). **Every** key on the keyboard plays a random one
-  of those 10.
+  of those 10. Or record W, A, S, D (or any key) **individually** so each key has its own sound.
 - **Press and release:** each take captures both the "down" and the "let go" sound. Pressing plays the
   press sound, and releasing plays the release sound *of the same take*, just like a real switch.
 - It never plays the same take twice in a row, and by default ("Extra variation") each play also gets a
@@ -79,6 +79,31 @@ packs/<Pack name>/
   **Reload packs**.
 - **New pack** (in the pack picker or a clickpack screen) makes an empty pack to record into; rename
   its folder any time.
+
+### Recording keys individually (W, A, S, D or any key)
+
+In **Keyboard clickpack...** the row at the top picks whose sounds you're looking at / recording:
+**All keys | W | A | S | D | Other key...** (Other key: press any key, e.g. Space or Shift).
+
+- Pick **W** and hit **Record 10**: only W presses are recorded (other keys are ignored), and from
+  then on W plays its own sounds. Each key has its own Clicks / Soft / Hard tabs and waves.
+- Keys without their own sounds play the **All keys** sounds.
+- If you only recorded keys individually (no All keys sounds), every other key plays a random
+  take from all of them, so recording W, A, S and D is enough for the whole keyboard.
+
+Each key's sounds go in its own folder inside the pack, laid out like the rest:
+
+```
+keyboard/
+  clicks/  releases/ ...        All keys (shared)
+  keys/
+    w/      clicks/  releases/  softclicks/  softreleases/  hardclicks/  hardreleases/
+    a/      ...
+    space/  ...
+```
+
+Folder names are Minecraft's key names: letters and digits as themselves, plus `space`,
+`left.shift`, `enter`, `tab`, `left.control` and so on (they don't depend on your keyboard layout).
 
 ### Soft and hard clicks (optional)
 
