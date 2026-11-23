@@ -33,6 +33,7 @@ public final class SampleBank {
     /** Which take each held button / key started with, so its release sound matches. */
     private record Held(int take, float gain, float pitch) {}
     private final Map<Integer, Held> held = new HashMap<>();
+    private static final Map<Take, Long> previewStarts = new java.util.IdentityHashMap<>();
 
     public SampleBank(String name) {
         this.name = name;
@@ -174,16 +175,66 @@ public final class SampleBank {
 
     /** Preview one take: press, then its release a moment later. */
     public void preview(int index, float volume) {
+        preview(index, volume, 0);
+    }
+
+    /** Preview one take, starting {@code delayMs} from now. Remembers when, so waveforms can draw a playhead. */
+    public void preview(int index, float volume, int delayMs) {
         List<Take> list = takes;
         if (index < 0 || index >= list.size()) return;
         Take t = list.get(index);
-        AudioEngine.play(t.press(), volume * normGain, 1f);
-        AudioEngine.play(t.release(), volume * normGain, 1f, 110);
+        AudioEngine.play(t.press(), volume * normGain, 1f, delayMs);
+        int relMs = Math.round(t.releaseOffset() * 1000f / AudioEngine.RATE);
+        AudioEngine.play(t.release(), volume * normGain, 1f, delayMs + relMs);
+        previewStarts.put(t, System.nanoTime() + delayMs * 1_000_000L);
     }
 
-    /** Preview a random take. */
-    public void previewRandom(float volume) {
+    /** Plays every take one after another. @return total length in ms */
+    public int previewAll(float volume) {
         List<Take> list = takes;
-        if (!list.isEmpty()) preview(ThreadLocalRandom.current().nextInt(list.size()), volume);
+        int at = 0;
+        for (int i = 0; i < list.size(); i++) {
+            preview(i, volume, at);
+            at += Math.round(list.get(i).lengthMs()) + 250;
+        }
+        return at;
+    }
+
+    /**
+     * How far into its preview a take currently is, in frames; -1 if it isn't playing.
+     * (Ignores the few ms of output buffering, which is invisible at this size.)
+     */
+    public static long previewPosition(Take t) {
+        Long start = previewStarts.get(t);
+        if (start == null) return -1;
+        long frames = (long) ((System.nanoTime() - start) / 1e9 * AudioEngine.RATE);
+        if (frames >= t.timelineLength()) { previewStarts.remove(t); return -1; }
+        return frames < 0 ? -1 : frames;
+    }
+
+    /** Loudest point across all takes, for scaling waveforms consistently. */
+    public float peak() {
+        float max = 0f;
+        for (Take t : takes) max = Math.max(max, t.peak());
+        return max;
+    }
+
+    /** Preview a random take the way it sounds in game: random pick, optional variation, release after a natural gap. */
+    public void previewRandom(float volume, boolean variation, boolean withRelease) {
+        List<Take> list = takes;
+        if (list.isEmpty() || volume <= 0f) return;
+        ThreadLocalRandom r = ThreadLocalRandom.current();
+        int i = r.nextInt(list.size());
+        if (list.size() > 1 && i == last) i = (i + 1 + r.nextInt(list.size() - 1)) % list.size();
+        last = i;
+        float gain = volume * normGain, pitch = 1f;
+        if (variation) {
+            gain *= 0.85f + r.nextFloat() * 0.15f;
+            pitch = 0.96f + r.nextFloat() * 0.08f;
+        }
+        Take t = list.get(i);
+        AudioEngine.play(t.press(), gain, pitch);
+        if (withRelease) AudioEngine.play(t.release(), gain, pitch, Math.round(t.releaseOffset() * 1000f / AudioEngine.RATE));
+        previewStarts.put(t, System.nanoTime());
     }
 }

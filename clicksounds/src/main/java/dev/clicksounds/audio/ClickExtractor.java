@@ -12,13 +12,16 @@ package dev.clicksounds.audio;
 public final class ClickExtractor {
     private ClickExtractor() {}
 
+    /** The cut-out take plus where it sat in the segment (for highlighting it on the live wave). */
+    public record Result(Take take, int start, int end) {}
+
     /**
      * @param seg        mic audio, first sample = frame {@code segStart}
      * @param pressMark  mic frame when the press happened
      * @param releaseMark mic frame when the release happened, or -1 if unknown
      * @return the take, or null if no click clearly louder than the background noise was heard
      */
-    public static Take extract(float[] seg, long segStart, long pressMark, long releaseMark, float rate) {
+    public static Result extract(float[] seg, long segStart, long pressMark, long releaseMark, float rate) {
         float[] x = removeDc(seg);
         float noise = quietestRms(x, (int) (rate * 0.03f));
         int ms = Math.max(1, (int) (rate / 1000f));
@@ -31,16 +34,17 @@ public final class ClickExtractor {
         if (releaseMark >= 0) {
             int lag = Math.max(-50 * ms, Math.min(300 * ms, pressOn - pm));
             int expected = (int) (releaseMark - segStart) + lag;
-            int from = Math.max(pressOn + 15 * ms, expected - 40 * ms);
+            int from = Math.max(pressOn + 10 * ms, expected - 40 * ms);
             int to = Math.min(x.length, expected + 80 * ms);
-            if (to - from > 10 * ms) relOn = onset(x, from, to, from, noise, rate);
+            if (to - from > 5 * ms) relOn = attack(x, from, to, noise, rate);
         }
 
         int pressEnd = Math.min(x.length, pressOn + 220 * ms);
         if (relOn >= 0) pressEnd = Math.min(pressEnd, relOn - ms);
         float[] press = cut(x, pressOn, pressEnd, noise, rate);
         float[] release = relOn >= 0 ? cut(x, relOn, Math.min(x.length, relOn + 180 * ms), noise, rate) : null;
-        return new Take(press, release);
+        int end = relOn >= 0 ? relOn + release.length : pressOn + press.length;
+        return new Result(new Take(press, release), pressOn, end);
     }
 
     /** Start of the first strong transient in [from, to), with 3 ms of pre-roll; -1 if nothing there. */
@@ -49,15 +53,47 @@ public final class ClickExtractor {
         if (peak < 0.003f || peak < noise * 6f) return -1;
         // the first transient that gets reasonably close to the loudest point
         // (picks the press rather than a louder release if both are in range)
+        // (and clearly above the hiss, so a stray noise spike can't start it early)
+        float trigger = Math.max(peak * 0.35f, noise * 5.5f);
         int first = from;
-        while (first < to && Math.abs(x[first]) < peak * 0.35f) first++;
+        while (first < to && Math.abs(x[first]) < trigger) first++;
         // walk back to where the attack actually begins
         int win = Math.max(1, (int) (rate * 0.001f));
         int limit = Math.max(lowerBound, first - (int) (rate * 0.025f));
-        float floor = Math.max(peak * 0.06f, noise * 2f);
+        // (a 1 ms slice of plain hiss peaks at ~3x its RMS, so stay above that or we'd walk into the noise)
+        float floor = Math.max(peak * 0.06f, noise * 4.5f);
         int on = first;
         while (on - win > limit && maxAbs(x, on - win, on) > floor) on -= win;
         return Math.max(lowerBound, on - (int) (rate * 0.003f));
+    }
+
+    /**
+     * Start of the strongest <em>new</em> attack in [from, to): the 1 ms block whose loudness jumps
+     * the most above the 3 ms just before it. A press that is still ringing out only ever gets
+     * quieter, so it is never mistaken for the release. -1 if there is no clear jump.
+     */
+    static int attack(float[] x, int from, int to, float noise, float rate) {
+        int blk = Math.max(1, (int) (rate * 0.001f));
+        int first = Math.max(0, from - 3 * blk);
+        int n = (to - first) / blk;
+        if (n < 4) return -1;
+        float[] e = new float[n];
+        for (int k = 0; k < n; k++) e[k] = maxAbs(x, first + k * blk, first + (k + 1) * blk);
+        float min = Math.max(0.003f, noise * 6f);
+        int best = -1;
+        float bestJump = 0f;
+        for (int k = 3; k < n; k++) {
+            float prev = Math.max(e[k - 1], Math.max(e[k - 2], e[k - 3]));
+            // let the attack build over a couple of blocks
+            float here = Math.max(e[k], k + 1 < n ? e[k + 1] : 0f);
+            if (here < min || here < prev * 2.5f) continue;
+            float jump = here - prev;
+            if (jump > bestJump) { bestJump = jump; best = k; }
+        }
+        if (best < 0) return -1;
+        // the first block of this rise
+        while (best > 3 && e[best - 1] > e[best - 2] * 1.5f && e[best - 1] > min * 0.5f) best--;
+        return Math.max(from - 3 * blk, first + best * blk - 2 * blk);
     }
 
     /** Copies [start, maxEnd), trimmed once it has decayed into the noise, with short fades. */

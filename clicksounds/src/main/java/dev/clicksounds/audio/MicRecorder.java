@@ -99,6 +99,20 @@ public final class MicRecorder {
     public float level() { return level; }
     public String error() { return error; }
 
+    /** Loudest sample per column for the {@code frames} frames ending at {@code end}, straight from the ring (for the live wave). */
+    public float[] envelope(long end, int frames, int cols) {
+        float[] out = new float[cols];
+        long total = this.total, oldest = total - ring.length + 1024;
+        long from = end - frames;
+        for (int c = 0; c < cols; c++) {
+            long a = from + (long) c * frames / cols, b = Math.max(a + 1, from + (long) (c + 1) * frames / cols);
+            float m = 0f;
+            for (long f = Math.max(a, Math.max(0, oldest)); f < Math.min(b, total); f++) m = Math.max(m, Math.abs(ring[(int) (f % ring.length)]));
+            out[c] = m;
+        }
+        return out;
+    }
+
     /** Copies frames [from, from+len) out of the ring buffer (missing frames are silence). */
     public float[] extract(long from, int len) {
         float[] out = new float[len];

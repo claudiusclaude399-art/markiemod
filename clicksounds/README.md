@@ -22,8 +22,19 @@ Client-side only. Requires Fabric Loader and Fabric API.
 2. Click **Record 10 mouse clicks** and click your mouse 10 times, one click at a time (press and
    let go normally). Each box turns green when that click has been captured.
 3. Click **Record 10 key presses** and press W, A, S, D 10 times in total.
-4. Open **Mouse takes... / Keyboard takes...** to listen to every take and **Redo** any bad ones
-   individually. Dragging a volume slider plays a preview.
+4. When it's done you land on the takes screen: every take is shown as a **sound wave** (press in
+   blue, release in orange). Click a wave to hear it, with a playhead running across it, hit
+   **Play all** to hear them back to back, and **Redo** any bad one on its own.
+
+While recording you see a **live sound wave** from your mic. Each press and release is marked on it,
+every click it captured is highlighted green, and each finished take appears as a mini wave in the
+progress row. If a click isn't heard, try again closer to the mic.
+
+**Previews:**
+- the ▶ button next to "takes + waves" plays a random take exactly as it sounds in game (random
+  pick, variation, release after a natural gap)
+- dragging a volume slider plays previews too
+- after redoing one take, it plays straight away
 
 Esc during recording cancels it, and your old sounds are kept. You only need a microphone for those
 few seconds of recording. Afterwards the mod never touches the mic.
