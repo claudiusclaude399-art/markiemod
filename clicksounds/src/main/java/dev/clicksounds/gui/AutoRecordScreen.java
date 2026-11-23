@@ -31,7 +31,7 @@ import static dev.clicksounds.gui.ClickSoundsScreen.*;
 
 /**
  * Auto record: just click, scroll and type normally. Every press / release is caught and sorted
- * by itself into the right category - which button or key, and soft / normal / hard from how fast
+ * by itself into the right category: which button or key, and soft / normal / hard from how fast
  * you were going (the same rule playback uses). Save fills the categories that got takes.
  *
  * First it learns the mic's delay from a few slow, separate clicks; after that it knows where
@@ -93,7 +93,6 @@ public class AutoRecordScreen extends Screen {
         this.parent = parent;
     }
 
-    // ---- setup / widgets ----
 
     @Override
     protected void init() {
@@ -137,7 +136,7 @@ public class AutoRecordScreen extends Screen {
         addDrawableChild(save);
         addDrawableChild(ButtonWidget.builder(Text.literal(paused ? "Resume" : "Pause"), b -> { paused = !paused; clearAndInit(); })
             .dimensions(cx - 50, by, 100, 20).build());
-        addDrawableChild(ButtonWidget.builder(Text.literal("Cancel"), b -> { report("Auto record cancelled - nothing was changed", GRAY); close(); })
+        addDrawableChild(ButtonWidget.builder(Text.literal("Cancel"), b -> { report("Auto record cancelled, nothing was changed", GRAY); close(); })
             .dimensions(cx + 55, by, 100, 20).build());
     }
 
@@ -147,7 +146,6 @@ public class AutoRecordScreen extends Screen {
         return n;
     }
 
-    // ---- input ----
 
     private boolean overWidget(double x, double y) {
         for (Element e : children()) if (e.isMouseOver(x, y)) return true;
@@ -216,7 +214,7 @@ public class AutoRecordScreen extends Screen {
     @Override
     public boolean keyPressed(KeyInput input) {
         if (input.key() == GLFW.GLFW_KEY_ESCAPE) {
-            report("Auto record cancelled - nothing was changed", GRAY);
+            report("Auto record cancelled, nothing was changed", GRAY);
             close();
             return true;
         }
@@ -231,7 +229,6 @@ public class AutoRecordScreen extends Screen {
         return true;
     }
 
-    // ---- processing ----
 
     @Override
     public void tick() {
@@ -276,7 +273,7 @@ public class AutoRecordScreen extends Screen {
             if (res != null) learnLag(from + res.start() + (long) (rate * 0.003f) - p.press);
         } else if (lag < 0) {
             missed++;
-            setStatus("Still learning your mic's delay - a few slow, separate clicks first", YELLOW);
+            setStatus("Still learning your mic's delay. Do a few slow, separate clicks first.", YELLOW);
             return;
         } else {
             from = p.press + lag - (long) (rate * 0.05f);
@@ -339,7 +336,7 @@ public class AutoRecordScreen extends Screen {
             }
         }
         if (err.length() > 0) report("Saved " + takes + " takes, but some failed: " + err, RED);
-        else report("Saved " + takes + " takes into " + cats + " categor" + (cats == 1 ? "y" : "ies") + " - open a clickpack to see them", GREEN);
+        else report("Saved " + takes + " takes into " + cats + " categor" + (cats == 1 ? "y" : "ies") + ". Open a clickpack to see them.", GREEN);
         close();
     }
 
@@ -358,18 +355,17 @@ public class AutoRecordScreen extends Screen {
         ClickSoundsClient.recording = false;
     }
 
-    // ---- drawing ----
 
     @Override
     public void render(DrawContext ctx, int mouseX, int mouseY, float delta) {
         super.render(ctx, mouseX, mouseY, delta);
         int cx = this.width / 2;
-        ctx.drawCenteredTextWithShadow(this.textRenderer, "Auto record - just click, scroll and type normally", cx, 4, WHITE);
+        ctx.drawCenteredTextWithShadow(this.textRenderer, "Auto record: just click, scroll and type normally", cx, 4, WHITE);
         if (mic == null) {
             ctx.drawCenteredTextWithShadow(this.textRenderer, micError == null ? "" : micError, cx, this.height / 2, RED);
             return;
         }
-        String sub = paused ? "Paused - press Resume to keep going"
+        String sub = paused ? "Paused. Press Resume to keep going."
             : lag < 0 ? "Learning your mic's delay: click a few times slowly, with a pause in between"
             : String.format(Locale.ROOT, "Mic delay %.0f ms  |  %d caught, %d missed%s", lag * 1000f / mic.rate(), caught, missed,
                 full > 0 ? ", " + full + " extra (category full)" : "");
@@ -392,7 +388,7 @@ public class AutoRecordScreen extends Screen {
             if (!rows.contains(row)) rows.add(row);
         }
         int maxRows = Math.max(1, (Math.min(this.height - 24, 214) - 4 - y) / 12);
-        if (rows.isEmpty()) ctx.drawTextWithShadow(this.textRenderer, "Nothing yet - go ahead and click", x0, y, DARK_GRAY);
+        if (rows.isEmpty()) ctx.drawTextWithShadow(this.textRenderer, "Nothing yet, go ahead and click", x0, y, DARK_GRAY);
         for (int i = 0; i < Math.min(rows.size(), maxRows); i++) {
             String row = rows.get(i);
             String[] k = row.split("\\|", -1);

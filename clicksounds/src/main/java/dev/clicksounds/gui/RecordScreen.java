@@ -103,8 +103,8 @@ public class RecordScreen extends Screen {
         String act = mouse ? (key.isEmpty() ? "Click your mouse" : "Click the " + SampleBank.keyLabel(key) + " button")
             : key.isEmpty() ? "Press W, A, S or D" : "Press " + SampleBank.keyLabel(key);
         return switch (genre) {
-            case NORMAL -> act + " like you normally do - press and let go";
-            case SOFT -> act + " lightly, like when spam-clicking - press and let go";
+            case NORMAL -> act + " like you normally do: press and let go";
+            case SOFT -> act + " lightly, like when spam-clicking: press and let go";
             case HARD -> act + " firmly, like the first press after a pause";
         };
     }
@@ -128,12 +128,11 @@ public class RecordScreen extends Screen {
         }
     }
 
-    // ---- input ----
 
     private void onPress(int id) {
         if (mic == null) return;
         if (phase != Phase.READY) {
-            if (phase == Phase.WAITING) setStatus("A bit slower - wait for each one to register", YELLOW);
+            if (phase == Phase.WAITING) setStatus("A bit slower, wait for each one to register", YELLOW);
             return;
         }
         pressMark = mic.now();
@@ -155,12 +154,12 @@ public class RecordScreen extends Screen {
         if (mic == null) return super.mouseClicked(click, doubled);
         if (!mouse) return true;
         if (scroll()) {
-            setStatus("Use the scroll wheel - clicks aren't recorded here", YELLOW);
+            setStatus("Use the scroll wheel. Clicks aren't recorded here.", YELLOW);
             return true;
         }
         String b = ClickSoundsClient.buttonName(click.button());
         if (!key.isEmpty() && !key.equals(b)) {
-            setStatus("That's the " + SampleBank.keyLabel(b) + " button - only " + SampleBank.keyLabel(key) + " is recorded here", YELLOW);
+            setStatus("That's the " + SampleBank.keyLabel(b) + " button. Only " + SampleBank.keyLabel(key) + " is recorded here.", YELLOW);
             return true;
         }
         onPress(click.button());
@@ -171,7 +170,7 @@ public class RecordScreen extends Screen {
     public boolean mouseScrolled(double mouseX, double mouseY, double horizontal, double vertical) {
         if (mic == null || !scroll() || vertical == 0) return true;
         if (phase != Phase.READY) {
-            if (phase == Phase.WAITING) setStatus("A bit slower - one notch, then wait for it to register", YELLOW);
+            if (phase == Phase.WAITING) setStatus("A bit slower: one notch, then wait for it to register", YELLOW);
             return true;
         }
         // a notch is a press without a release
@@ -193,12 +192,12 @@ public class RecordScreen extends Screen {
     @Override
     public boolean keyPressed(KeyInput input) {
         if (input.key() == GLFW.GLFW_KEY_ESCAPE) {
-            cancel(mic == null ? null : "Recording cancelled - nothing was changed");
+            cancel(mic == null ? null : "Recording cancelled, nothing was changed");
             return true;
         }
         if (mouse) return true;
         if (!key.isEmpty() && !key.equals(ClickSoundsClient.keyName(input))) {
-            setStatus("That's not " + SampleBank.keyLabel(key) + " - only " + SampleBank.keyLabel(key) + " is recorded here", YELLOW);
+            setStatus("That's not " + SampleBank.keyLabel(key) + ". Only " + SampleBank.keyLabel(key) + " is recorded here.", YELLOW);
             return true;
         }
         // heldKeys filters out key-repeat while a key is held down
@@ -213,7 +212,6 @@ public class RecordScreen extends Screen {
         return true;
     }
 
-    // ---- processing ----
 
     @Override
     public void tick() {
@@ -241,7 +239,7 @@ public class RecordScreen extends Screen {
 
         if (res == null) {
             lastRejected = pressMark;
-            setStatus("Didn't hear that one - try again (mic closer / louder?)", YELLOW);
+            setStatus("Didn't hear that one, try again (mic closer or louder?)", YELLOW);
             return;
         }
         Take t = res.take();
@@ -302,7 +300,6 @@ public class RecordScreen extends Screen {
         ClickSoundsClient.recording = false;
     }
 
-    // ---- drawing ----
 
     @Override
     public void render(DrawContext ctx, int mouseX, int mouseY, float delta) {

@@ -82,7 +82,7 @@ public class PackPickerScreen extends Screen {
             play.active = !summary.equals("empty");
             addDrawableChild(play);
 
-            String label = this.textRenderer.trimToWidth((current ? "✔ " : "") + name, 150) + "  -  " + summary;
+            String label = this.textRenderer.trimToWidth((current ? "✔ " : "") + name, 150) + "  (" + summary + ")";
             label = this.textRenderer.trimToWidth(label, 276);
             ButtonWidget pick = ButtonWidget.builder(Text.literal(label), b -> select(name))
                 .dimensions(cx - 131, y, 286, 20).tooltip(Tooltip.of(Text.literal(current
@@ -107,7 +107,7 @@ public class PackPickerScreen extends Screen {
         addDrawableChild(ButtonWidget.builder(Text.literal("New pack"), b -> {
             String name = Packs.create();
             select(name);
-            setStatus("Made '" + name + "' - record into it from its clickpack screen", GREEN);
+            setStatus("Made '" + name + "'. Record into it from its clickpack screen.", GREEN);
         }).dimensions(cx + 3, y, 128, 20).build());
         y += 24;
         addDrawableChild(ButtonWidget.builder(Text.literal("Rename..."), b -> client.setScreen(new RenamePackScreen(this, bank().pack())))

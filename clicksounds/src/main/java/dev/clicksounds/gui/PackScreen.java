@@ -230,7 +230,7 @@ public class PackScreen extends Screen {
                 else {
                     scope = k;
                     page = 0;
-                    setStatus(bank.size(k, Genre.NORMAL) > 0 ? "" : SampleBank.keyLabel(k) + " has no own sounds yet - hit Record 10", GRAY);
+                    setStatus(bank.size(k, Genre.NORMAL) > 0 ? "" : SampleBank.keyLabel(k) + " has no own sounds yet. Hit Record 10.", GRAY);
                 }
             } else setStatus("", GRAY);
             clearAndInit();
@@ -248,13 +248,13 @@ public class PackScreen extends Screen {
         String sub;
         boolean none = bank.size(scope, Genre.NORMAL) + bank.size(scope, Genre.SOFT) + bank.size(scope, Genre.HARD) == 0;
         if (none && scope.equals(SampleBank.SCROLL) && mouse)
-            sub = "No scroll sounds yet - hit Record 10 and scroll one notch at a time";
+            sub = "No scroll sounds yet. Hit Record 10 and scroll one notch at a time.";
         else if (none && !scope.isEmpty())
             sub = SampleBank.keyLabel(scope) + " has no own sounds yet, so it uses the " + (mouse ? "All buttons" : "All keys") + " sounds";
         else {
             sub = genre.description;
-            if (genre == Genre.SOFT) sub += " (< " + ClickConfig.softMs + " ms apart)" + (ClickConfig.softClicks ? "" : " - OFF");
-            if (genre == Genre.HARD) sub += " (> " + ClickConfig.hardMs + " ms pause)" + (ClickConfig.hardClicks ? "" : " - OFF");
+            if (genre == Genre.SOFT) sub += " (< " + ClickConfig.softMs + " ms apart)" + (ClickConfig.softClicks ? "" : ", OFF");
+            if (genre == Genre.HARD) sub += " (> " + ClickConfig.hardMs + " ms pause)" + (ClickConfig.hardClicks ? "" : ", OFF");
             if (scope.equals(SampleBank.SCROLL) && mouse) sub = sub.replace("Used for normal clicking", "One sound per wheel notch")
                 .replace("when you click fast (spam)", "when you scroll fast").replace("for the first click after a pause", "for the first notch after a pause");
             if (!scope.isEmpty()) sub = SampleBank.keyLabel(scope) + ": " + sub;

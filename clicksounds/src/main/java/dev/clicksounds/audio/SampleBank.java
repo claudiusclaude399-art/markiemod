@@ -76,7 +76,6 @@ public final class SampleBank {
         return data.scopes().getOrDefault(name == null ? ALL : name, EMPTY);
     }
 
-    // ---- info ----
 
     public String pack() { return pack; }
     public List<Take> takes(Genre g) { return takes(ALL, g); }
@@ -153,7 +152,6 @@ public final class SampleBank {
         return b.toString();
     }
 
-    // ---- files ----
 
     public Path dir() {
         return Packs.deviceDir(pack, device);
@@ -336,7 +334,6 @@ public final class SampleBank {
         }
     }
 
-    // ---- playback ----
 
     /** Which sounds a key uses: its own if it has any, else the shared ones, else all per-key ones mixed. */
     private String resolveScope(String key) {
@@ -433,7 +430,6 @@ public final class SampleBank {
         return null;
     }
 
-    // ---- previews ----
 
     /** Preview one take, starting {@code delayMs} from now. Remembers when, so waveforms can draw a playhead. */
     public void preview(String sc, Genre g, int index, float volume, int delayMs) {

@@ -42,7 +42,7 @@ public class SoundOptionsScreen extends Screen {
         y += gap + 6;
 
         ButtonWidget desk = toggle(left, y, w, "Desk stereo", () -> ClickConfig.deskStereo, v -> { ClickConfig.deskStereo = v; previewDesk(); },
-            "Like a real desk: the keyboard on the left (every key at its own spot - A further left than L), the mouse on the right.");
+            "Like a real desk: the keyboard on the left (every key at its own spot, so A is further left than L), the mouse on the right.");
         addDrawableChild(desk);
         addDrawableChild(new SliderWidget(right, y, w, 20, Text.empty(), ClickConfig.stereoWidth) {
             { updateMessage(); }

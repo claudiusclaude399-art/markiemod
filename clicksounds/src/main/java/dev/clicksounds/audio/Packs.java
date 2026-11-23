@@ -164,7 +164,6 @@ public final class Packs {
         if (list().isEmpty()) create();
     }
 
-    // ---- .zip import / export, rename ----
 
     private static final int MAX_ENTRIES = 5000;
     private static final long MAX_FILE = 50L << 20, MAX_TOTAL = 400L << 20;
@@ -193,7 +192,7 @@ public final class Packs {
             try {
                 int n = unzip(zip, target, java.nio.charset.StandardCharsets.UTF_8);
                 if (n == 0) {
-                    ClickSoundsClient.LOG.warn("{} has no .wav/.ogg files - not a clickpack?", zip.getFileName());
+                    ClickSoundsClient.LOG.warn("{} has no .wav/.ogg files, so it's probably not a clickpack", zip.getFileName());
                     deleteTree(target);
                     continue;
                 }
