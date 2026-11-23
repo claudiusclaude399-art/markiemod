@@ -82,12 +82,15 @@ public class ClickSoundsScreen extends Screen {
             "Where the click sounds play. Pick a virtual audio cable to send them only to OBS / Discord."));
         y += gap;
 
-        addDrawableChild(ButtonWidget.builder(Text.literal("Reload packs"), b -> {
+        addDrawableChild(ButtonWidget.builder(Text.literal("Auto record..."), b -> client.setScreen(new AutoRecordScreen(this)))
+            .dimensions(left, y, w, 20).tooltip(Tooltip.of(Text.literal(
+                "Just click, scroll and type normally: every press is caught and sorted into the right button / key and soft / normal / hard by itself."))).build());
+        addDrawableChild(ButtonWidget.builder(Text.literal("Reload"), b -> {
             ClickSoundsClient.loadPacks();
             setStatus("Reloaded: mouse " + ClickSoundsClient.MOUSE.summary() + ", keyboard " + ClickSoundsClient.KEYBOARD.summary(), GREEN);
             clearAndInit();
-        }).dimensions(left, y, w, 20).tooltip(Tooltip.of(Text.literal("Re-read the packs folder after adding or changing files."))).build());
-        addDrawableChild(ButtonWidget.builder(Text.literal("Done"), b -> close()).dimensions(right, y, w, 20).build());
+        }).dimensions(right, y, 73, 20).tooltip(Tooltip.of(Text.literal("Re-read the packs folder after adding or changing files."))).build());
+        addDrawableChild(ButtonWidget.builder(Text.literal("Done"), b -> close()).dimensions(right + 77, y, 73, 20).build());
     }
 
     /** Opens the pack picker for the device. */

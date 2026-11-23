@@ -25,7 +25,8 @@ Client-side only. Requires Fabric Loader and Fabric API.
 
 1. Open the menu: press **K** in a world (rebindable under Controls > Click Sounds), type
    `/clicksounds`, or use the Configure button in **Mod Menu** (works from the title screen).
-2. Open **Mouse clickpack...**, stay on the **Clicks** tab and hit **Record 10**. Click your mouse 10
+2. Easiest: **Auto record...** (see below) and just play for a bit. Or record each category by hand:
+   open **Mouse clickpack...**, stay on the **Clicks** tab and hit **Record 10**. Click your mouse 10
    times, one click at a time (press and let go normally).
 3. Do the same in **Keyboard clickpack...** pressing W, A, S, D.
 4. Optional: record the **Soft clicks** and **Hard clicks** tabs too (see below).
@@ -37,6 +38,26 @@ them back to back, and **Redo** re-records just that one.
 While recording you see a **live sound wave** from your mic. Each press and release is marked, every
 click it captured is highlighted green, and each finished take appears as a mini wave. Esc cancels
 and keeps your old sounds. You only need a microphone for those few seconds of recording.
+
+### Auto record (easiest)
+
+**Auto record...** in the menu: just click, scroll and type normally, like you play. Every press and
+release is caught and **sorted by itself**:
+
+- **into the right input:** each mouse button (Left, Right, Middle, side buttons), the scroll wheel,
+  and W, A, S, D (other keys go into the shared "all keys" sounds). Change it with the buttons at the
+  top: mouse buttons separate / together, keys each own / WASD own / together.
+- **into soft / normal / hard** by how fast you were going: presses closer than 120 ms apart are
+  soft clicks, the first press after a pause over 800 ms is a hard click, everything else a normal
+  click. That's the same rule playback uses (both times are set in Sound options). Turn
+  **Speed sort** off to put everything in normal clicks.
+
+A table shows every category filling up to 10 takes. Hit **Save** when you're happy: only the
+categories you recorded are replaced, in the mouse and keyboard packs you're using.
+
+Start with a few slow, separate clicks: Auto record uses them to measure your mic's delay. After that
+it knows where each sound lands, so even spam clicks milliseconds apart are cut out cleanly. Clicks
+on the screen's own buttons are not recorded, and Esc cancels.
 
 **Previews:** the ▶ button next to "clickpack..." plays a random click exactly as it sounds in game.
 Dragging a volume slider plays previews too, and a redone take plays straight away.

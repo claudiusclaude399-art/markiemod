@@ -47,6 +47,45 @@ public final class ClickExtractor {
         return new Result(new Take(press, release), pressOn, end);
     }
 
+    /**
+     * For continuous recording, where clicks can be milliseconds apart: the mic delay is already
+     * known, so every mark below is where its sound is <em>expected</em> in the audio. Each sound
+     * is looked for in a tight window around its mark, and cut off before the next one begins.
+     *
+     * @param pressAt   expected frame of the press sound
+     * @param releaseAt expected frame of the release sound, or -1
+     * @param nextAt    expected frame of the next sound of any input (the cut never runs into it), or -1
+     * @return the take, or null if there's no clear click where it should be
+     */
+    public static Result extractAt(float[] seg, long segStart, long pressAt, long releaseAt, long nextAt, float rate) {
+        float[] x = removeDc(seg);
+        float noise = quietestRms(x, (int) (rate * 0.03f));
+        int ms = Math.max(1, (int) (rate / 1000f));
+        int limit = nextAt >= 0 ? (int) Math.min(x.length, nextAt - segStart - 2 * ms) : x.length;
+
+        int pi = (int) (pressAt - segStart);
+        int pressOn = attack(x, Math.max(3 * ms, pi - 20 * ms), Math.min(limit, pi + 30 * ms), noise, rate);
+        if (pressOn < 0) return null;
+
+        int relOn = -1;
+        if (releaseAt >= 0) {
+            int ri = (int) (releaseAt - segStart);
+            int from = Math.max(pressOn + 10 * ms, ri - 20 * ms), to = Math.min(limit, ri + 30 * ms);
+            if (to - from > 5 * ms) relOn = attack(x, from, to, noise, rate);
+        }
+        int pressEnd = Math.min(limit, pressOn + 220 * ms);
+        if (relOn >= 0) pressEnd = Math.min(pressEnd, relOn - ms);
+        if (pressEnd - pressOn < 8 * ms) return null; // too squeezed to be a usable click
+        float[] press = cut(x, pressOn, pressEnd, noise, rate);
+        float[] release = null;
+        if (relOn >= 0) {
+            int relEnd = Math.min(limit, relOn + 180 * ms);
+            if (relEnd - relOn >= 8 * ms) release = cut(x, relOn, relEnd, noise, rate);
+        }
+        int end = release != null ? relOn + release.length : pressOn + press.length;
+        return new Result(new Take(press, release), pressOn, end);
+    }
+
     /** Start of the first strong transient in [from, to), with 3 ms of pre-roll; -1 if nothing there. */
     static int onset(float[] x, int from, int to, int lowerBound, float noise, float rate) {
         float peak = maxAbs(x, from, to);
