@@ -11,6 +11,8 @@ import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.option.KeyBinding;
 import net.minecraft.client.util.InputUtil;
+import net.minecraft.text.Text;
+import net.minecraft.util.Formatting;
 import net.minecraft.util.Identifier;
 import org.lwjgl.glfw.GLFW;
 import org.slf4j.Logger;
@@ -28,7 +30,7 @@ public class ClickSoundsClient implements ClientModInitializer {
     /** True while the recorder is listening to the mic, so we don't play sounds into it. */
     public static volatile boolean recording = false;
 
-    private static KeyBinding openKey;
+    private static KeyBinding openKey, toggleKey;
 
     @Override
     public void onInitializeClient() {
@@ -37,14 +39,17 @@ public class ClickSoundsClient implements ClientModInitializer {
         KEYBOARD.load();
         AudioEngine.start();
 
+        KeyBinding.Category category = KeyBinding.Category.create(Identifier.of(MOD_ID, "main"));
         openKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
-            "key.clicksounds.open", InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_K,
-            KeyBinding.Category.create(Identifier.of(MOD_ID, "main"))));
+            "key.clicksounds.open", InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_K, category));
+        toggleKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
+            "key.clicksounds.toggle", InputUtil.Type.KEYSYM, InputUtil.UNKNOWN_KEY.getCode(), category));
 
         ClientTickEvents.END_CLIENT_TICK.register(mc -> {
             while (openKey.wasPressed()) {
                 if (mc.currentScreen == null) mc.setScreen(new ClickSoundsScreen(null));
             }
+            while (toggleKey.wasPressed()) toggleAll(mc);
         });
 
         // /clicksounds also opens the menu (queued so the closing chat screen doesn't close it)
@@ -56,15 +61,30 @@ public class ClickSoundsClient implements ClientModInitializer {
             })));
     }
 
-    /** Called from MouseMixin on every mouse button press. */
-    public static void onMouseButtonPressed(int button) {
-        if (recording || !ClickConfig.mouseEnabled) return;
-        MOUSE.playRandom(ClickConfig.mouseVolume, ClickConfig.variation);
+    private static void toggleAll(MinecraftClient mc) {
+        boolean on = !(ClickConfig.mouseEnabled || ClickConfig.keyboardEnabled);
+        ClickConfig.mouseEnabled = on;
+        ClickConfig.keyboardEnabled = on;
+        ClickConfig.save();
+        mc.inGameHud.setOverlayMessage(Text.literal("Click sounds: ")
+            .append(Text.literal(on ? "ON" : "OFF").formatted(on ? Formatting.GREEN : Formatting.RED)), false);
     }
 
-    /** Called from KeyboardMixin on every key press (not on hold-repeat). */
-    public static void onKeyPressed(int key) {
-        if (recording || !ClickConfig.keyboardEnabled) return;
-        KEYBOARD.playRandom(ClickConfig.keyboardVolume, ClickConfig.variation);
+    /** Called from MouseMixin on every mouse button press / release. */
+    public static void onMouseButton(int button, boolean pressed) {
+        if (pressed) {
+            if (!recording && ClickConfig.mouseEnabled) MOUSE.press(button, ClickConfig.mouseVolume, ClickConfig.variation);
+        } else {
+            MOUSE.release(button, !recording && ClickConfig.mouseEnabled && ClickConfig.releaseSounds);
+        }
+    }
+
+    /** Called from KeyboardMixin on every key press / release (not on hold-repeat). */
+    public static void onKey(int key, boolean pressed) {
+        if (pressed) {
+            if (!recording && ClickConfig.keyboardEnabled) KEYBOARD.press(key, ClickConfig.keyboardVolume, ClickConfig.variation);
+        } else {
+            KEYBOARD.release(key, !recording && ClickConfig.keyboardEnabled && ClickConfig.releaseSounds);
+        }
     }
 }

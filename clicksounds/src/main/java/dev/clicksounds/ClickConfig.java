@@ -17,6 +17,11 @@ public final class ClickConfig {
     public static float keyboardVolume = 1.0f;
     /** Small random pitch/volume changes on every play, on top of the 10 random takes. */
     public static boolean variation = true;
+    /** Also play the recorded "let go" sound when a button / key is released. */
+    public static boolean releaseSounds = true;
+    /** Device names; empty = system default. */
+    public static String micDevice = "";
+    public static String outputDevice = "";
 
     private ClickConfig() {}
 
@@ -35,6 +40,9 @@ public final class ClickConfig {
             mouseVolume = clamp(Float.parseFloat(p.getProperty("mouseVolume", "1.0")));
             keyboardVolume = clamp(Float.parseFloat(p.getProperty("keyboardVolume", "1.0")));
             variation = Boolean.parseBoolean(p.getProperty("variation", "true"));
+            releaseSounds = Boolean.parseBoolean(p.getProperty("releaseSounds", "true"));
+            micDevice = p.getProperty("micDevice", "");
+            outputDevice = p.getProperty("outputDevice", "");
         } catch (Exception e) {
             ClickSoundsClient.LOG.warn("Could not read {}, using defaults", f, e);
         }
@@ -47,6 +55,9 @@ public final class ClickConfig {
         p.setProperty("mouseVolume", Float.toString(mouseVolume));
         p.setProperty("keyboardVolume", Float.toString(keyboardVolume));
         p.setProperty("variation", Boolean.toString(variation));
+        p.setProperty("releaseSounds", Boolean.toString(releaseSounds));
+        p.setProperty("micDevice", micDevice);
+        p.setProperty("outputDevice", outputDevice);
         try {
             Files.createDirectories(file().getParent());
             try (Writer w = Files.newBufferedWriter(file())) {

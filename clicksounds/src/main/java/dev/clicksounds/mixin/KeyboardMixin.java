@@ -11,9 +11,10 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(Keyboard.class)
 public class KeyboardMixin {
-    // GLFW_PRESS only: holding W doesn't machine-gun the sound, it plays once like a real key.
+    // PRESS + RELEASE only (not REPEAT): holding W doesn't machine-gun the sound, it plays once like a real key.
     @Inject(method = "onKey", at = @At("HEAD"))
     private void clicksounds$onKey(long window, int action, KeyInput input, CallbackInfo ci) {
-        if (action == GLFW.GLFW_PRESS) ClickSoundsClient.onKeyPressed(input.key());
+        if (action == GLFW.GLFW_PRESS) ClickSoundsClient.onKey(input.key(), true);
+        else if (action == GLFW.GLFW_RELEASE) ClickSoundsClient.onKey(input.key(), false);
     }
 }

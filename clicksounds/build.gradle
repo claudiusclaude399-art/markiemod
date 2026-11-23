@@ -8,11 +8,20 @@ group = project.maven_group
 
 base { archivesName = project.archives_base_name }
 
+repositories {
+    // Mod Menu (optional, compile-only: adds a settings button on its mod list)
+    exclusiveContent {
+        forRepository { maven { name = 'Modrinth'; url = 'https://api.modrinth.com/maven' } }
+        filter { includeGroup 'maven.modrinth' }
+    }
+}
+
 dependencies {
     minecraft "com.mojang:minecraft:${project.minecraft_version}"
     mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
     modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
     modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+    modCompileOnly("maven.modrinth:modmenu:${project.modmenu_version}") { transitive = false }
 }
 
 processResources {

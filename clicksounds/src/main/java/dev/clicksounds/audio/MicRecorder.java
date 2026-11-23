@@ -3,7 +3,6 @@ package dev.clicksounds.audio;
 import dev.clicksounds.ClickSoundsClient;
 
 import javax.sound.sampled.AudioFormat;
-import javax.sound.sampled.AudioSystem;
 import javax.sound.sampled.DataLine;
 import javax.sound.sampled.TargetDataLine;
 
@@ -25,16 +24,15 @@ public final class MicRecorder {
     private Thread thread;
 
     /** @return null on success, otherwise a message for the player */
-    public String start() {
+    public String start(String device) {
         float[] rates = {44100f, 48000f};
         int[] chans = {1, 2};
         for (float r : rates) {
             for (int c : chans) {
                 AudioFormat fmt = new AudioFormat(r, 16, c, true, false);
                 DataLine.Info info = new DataLine.Info(TargetDataLine.class, fmt);
-                if (!AudioSystem.isLineSupported(info)) continue;
                 try {
-                    TargetDataLine l = (TargetDataLine) AudioSystem.getLine(info);
+                    TargetDataLine l = (TargetDataLine) Devices.get(device, info);
                     try {
                         l.open(fmt, (int) (r * 0.05f) * fmt.getFrameSize()); // ~50 ms buffer
                     } catch (Exception small) {

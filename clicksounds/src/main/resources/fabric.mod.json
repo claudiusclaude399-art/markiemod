@@ -3,18 +3,30 @@
   "id": "clicksounds",
   "version": "${version}",
   "name": "Click Sounds",
-  "description": "Record 10 of your own mouse clicks and 10 key presses with your mic once; the mod then plays a random one every time you click or press a key, so viewers hear your clicks without a live mic.",
-  "authors": ["you"],
+  "description": "Record 10 of your own mouse clicks and 10 key presses (press + release) with your mic once; the mod then plays a random one every time you click or press any key, so viewers hear your clicks without a live mic.",
+  "authors": [
+    "you"
+  ],
   "license": "MIT",
   "environment": "client",
   "entrypoints": {
-    "client": ["dev.clicksounds.ClickSoundsClient"]
+    "client": [
+      "dev.clicksounds.ClickSoundsClient"
+    ],
+    "modmenu": [
+      "dev.clicksounds.ModMenuIntegration"
+    ]
   },
-  "mixins": ["clicksounds.mixins.json"],
+  "mixins": [
+    "clicksounds.mixins.json"
+  ],
   "depends": {
     "fabricloader": ">=0.18.0",
     "minecraft": "~1.21.11",
     "java": ">=21",
     "fabric-api": "*"
+  },
+  "suggests": {
+    "modmenu": "*"
   }
 }
