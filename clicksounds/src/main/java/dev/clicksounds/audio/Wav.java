@@ -25,8 +25,40 @@ public final class Wav {
         }
     }
 
-    /** Reads any PCM WAV (mono/stereo, any rate) as mono float at {@link AudioEngine#RATE}. */
+    /** Reads a .wav or .ogg file as mono float at {@link AudioEngine#RATE}. */
     public static float[] read(Path file) throws Exception {
+        String n = file.getFileName().toString().toLowerCase(java.util.Locale.ROOT);
+        return n.endsWith(".ogg") ? readOgg(file) : readWav(file);
+    }
+
+    /** Ogg Vorbis via the stb_vorbis decoder that ships with Minecraft (LWJGL). */
+    private static float[] readOgg(Path file) throws Exception {
+        byte[] bytes = java.nio.file.Files.readAllBytes(file);
+        java.nio.ByteBuffer buf = org.lwjgl.system.MemoryUtil.memAlloc(bytes.length);
+        try (org.lwjgl.system.MemoryStack stack = org.lwjgl.system.MemoryStack.stackPush()) {
+            buf.put(bytes).flip();
+            java.nio.IntBuffer ch = stack.mallocInt(1), rate = stack.mallocInt(1);
+            java.nio.ShortBuffer pcm = org.lwjgl.stb.STBVorbis.stb_vorbis_decode_memory(buf, ch, rate);
+            if (pcm == null) throw new IOException("not a valid Ogg Vorbis file");
+            try {
+                int channels = Math.max(1, ch.get(0));
+                int frames = Math.min(pcm.remaining() / channels, rate.get(0) * 2);
+                float[] mono = new float[frames];
+                for (int f = 0; f < frames; f++) {
+                    float sum = 0f;
+                    for (int c = 0; c < channels; c++) sum += pcm.get(f * channels + c) / 32768f;
+                    mono[f] = sum / channels;
+                }
+                return resample(mono, rate.get(0), AudioEngine.RATE);
+            } finally {
+                org.lwjgl.system.libc.LibCStdlib.free(pcm);
+            }
+        } finally {
+            org.lwjgl.system.MemoryUtil.memFree(buf);
+        }
+    }
+
+    private static float[] readWav(Path file) throws Exception {
         try (AudioInputStream raw = AudioSystem.getAudioInputStream(file.toFile())) {
             AudioFormat src = raw.getFormat();
             int ch = src.getChannels();

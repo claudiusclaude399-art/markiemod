@@ -1,5 +1,6 @@
 package dev.clicksounds.gui;
 
+import dev.clicksounds.audio.Genre;
 import dev.clicksounds.audio.SampleBank;
 import dev.clicksounds.audio.Take;
 import net.minecraft.client.gui.Click;
@@ -18,26 +19,31 @@ public class WaveformButton extends ClickableWidget {
     private static final int LABEL_W = 14;
 
     private final SampleBank bank;
+    private final Genre genre;
     private final int index;
     private final Supplier<Float> volume;
     private final Waveforms.TakeShape shape;
     private final float gain;
 
-    public WaveformButton(int x, int y, int w, int h, SampleBank bank, int index, Supplier<Float> volume) {
+    public WaveformButton(int x, int y, int w, int h, SampleBank bank, Genre genre, int index, Supplier<Float> volume) {
         super(x, y, w, h, Text.literal("Take " + (index + 1)));
         this.bank = bank;
+        this.genre = genre;
         this.index = index;
         this.volume = volume;
-        Take t = index < bank.takes().size() ? bank.takes().get(index) : null;
+        java.util.List<Take> takes = bank.takes(genre);
+        Take t = index < takes.size() ? takes.get(index) : null;
         int longest = 0; // same time scale for every take in the bank, so they're comparable
-        for (Take other : bank.takes()) longest = Math.max(longest, other.timelineLength());
+        for (Take other : takes) longest = Math.max(longest, other.timelineLength());
         this.shape = t == null ? null : new Waveforms.TakeShape(t, w - LABEL_W - 3, longest);
         float peak = bank.peak();
         this.gain = peak > 0 ? 0.95f / peak : 1f;
         this.active = t != null;
         if (t != null) {
-            setTooltip(Tooltip.of(Text.literal(String.format(Locale.ROOT, "Take %d: %s, %.0f ms\nClick to play",
-                index + 1, t.release() != null ? "press + release" : "press only", t.lengthMs()))));
+            String rel = t.release() != null ? "click + release"
+                : bank.releaseCount(genre) > 0 || bank.releaseCount(Genre.NORMAL) > 0 ? "click (+ a random release in game)" : "click only";
+            setTooltip(Tooltip.of(Text.literal(String.format(Locale.ROOT, "%s: %s, %.0f ms\nClick to play",
+                t.name() == null ? "Take " + (index + 1) : t.name(), rel, t.lengthMs()))));
         }
     }
 
@@ -62,7 +68,7 @@ public class WaveformButton extends ClickableWidget {
 
     @Override
     public void onClick(Click click, boolean doubled) {
-        bank.preview(index, Math.max(0.3f, volume.get()));
+        bank.preview(genre, index, Math.max(0.3f, volume.get()), 0);
     }
 
     @Override

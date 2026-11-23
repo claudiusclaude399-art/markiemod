@@ -1,6 +1,7 @@
 package dev.clicksounds;
 
 import dev.clicksounds.audio.AudioEngine;
+import dev.clicksounds.audio.Packs;
 import dev.clicksounds.audio.SampleBank;
 import dev.clicksounds.gui.ClickSoundsScreen;
 import net.fabricmc.api.ClientModInitializer;
@@ -22,10 +23,10 @@ public class ClickSoundsClient implements ClientModInitializer {
     public static final String MOD_ID = "clicksounds";
     public static final Logger LOG = LoggerFactory.getLogger("Click Sounds");
 
-    /** 10 recorded mouse clicks. */
-    public static final SampleBank MOUSE = new SampleBank("mouse");
-    /** 10 recorded key presses (WASD) - used for every key on the keyboard. */
-    public static final SampleBank KEYBOARD = new SampleBank("keyboard");
+    /** Mouse sounds from the active mouse clickpack. */
+    public static final SampleBank MOUSE = new SampleBank(Packs.MOUSE);
+    /** Key sounds (recorded on WASD) from the active keyboard clickpack - used for every key. */
+    public static final SampleBank KEYBOARD = new SampleBank(Packs.KEYBOARD);
 
     /** True while the recorder is listening to the mic, so we don't play sounds into it. */
     public static volatile boolean recording = false;
@@ -35,8 +36,8 @@ public class ClickSoundsClient implements ClientModInitializer {
     @Override
     public void onInitializeClient() {
         ClickConfig.load();
-        MOUSE.load();
-        KEYBOARD.load();
+        Packs.setup();
+        loadPacks();
         AudioEngine.start();
 
         KeyBinding.Category category = KeyBinding.Category.create(Identifier.of(MOD_ID, "main"));
@@ -59,6 +60,15 @@ public class ClickSoundsClient implements ClientModInitializer {
                 mc.send(() -> mc.setScreen(new ClickSoundsScreen(null)));
                 return 1;
             })));
+    }
+
+    /** (Re)loads both active packs from disk. */
+    public static void loadPacks() {
+        MOUSE.load(ClickConfig.mousePack);
+        KEYBOARD.load(ClickConfig.keyboardPack);
+        ClickConfig.mousePack = MOUSE.pack();
+        ClickConfig.keyboardPack = KEYBOARD.pack();
+        ClickConfig.save();
     }
 
     private static void toggleAll(MinecraftClient mc) {

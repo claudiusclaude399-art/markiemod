@@ -1,7 +1,14 @@
 package dev.clicksounds.audio;
 
-/** One recorded click: the press sound and (optionally) the release sound of the same click. */
-public record Take(float[] press, float[] release) {
+/**
+ * One click: the press sound and (optionally) the release sound of the same click.
+ * {@code name} is the file name without extension (null for a fresh recording not saved yet).
+ */
+public record Take(String name, float[] press, float[] release) {
+    public Take(float[] press, float[] release) {
+        this(null, press, release);
+    }
+
     public float peak() {
         return Math.max(Wav.peak(press), release == null ? 0f : Wav.peak(release));
     }

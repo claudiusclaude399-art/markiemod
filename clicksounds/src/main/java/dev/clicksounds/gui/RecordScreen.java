@@ -4,6 +4,7 @@ import dev.clicksounds.ClickConfig;
 import dev.clicksounds.ClickSoundsClient;
 import dev.clicksounds.audio.AudioEngine;
 import dev.clicksounds.audio.ClickExtractor;
+import dev.clicksounds.audio.Genre;
 import dev.clicksounds.audio.MicRecorder;
 import dev.clicksounds.audio.SampleBank;
 import dev.clicksounds.audio.Take;
@@ -64,15 +65,32 @@ public class RecordScreen extends Screen {
     private float scopePeak = 0.05f;
     private long lastRejected = -1;
 
-    public RecordScreen(Screen parent, boolean mouse, int slot, StatusSink onDone) {
-        super(Text.literal(slot < 0
-            ? (mouse ? "Recording 10 mouse clicks" : "Recording 10 key presses")
-            : (mouse ? "Redo mouse take " : "Redo keyboard take ") + (slot + 1)));
+    private final Genre genre;
+
+    public RecordScreen(Screen parent, boolean mouse, Genre genre, int slot, StatusSink onDone) {
+        super(Text.literal(title(mouse, genre, slot)));
         this.parent = parent;
         this.mouse = mouse;
+        this.genre = genre;
         this.slot = slot;
         this.bank = mouse ? ClickSoundsClient.MOUSE : ClickSoundsClient.KEYBOARD;
         this.onDone = onDone;
+    }
+
+    private static String title(boolean mouse, Genre genre, int slot) {
+        String what = genre == Genre.NORMAL ? (mouse ? "mouse clicks" : "key presses")
+            : genre == Genre.SOFT ? (mouse ? "soft mouse clicks" : "soft key presses")
+            : (mouse ? "hard mouse clicks" : "hard key presses");
+        return slot < 0 ? "Recording 10 " + what : "Redo " + what.substring(0, what.length() - (what.endsWith("ses") ? 2 : 1)) + " " + (slot + 1);
+    }
+
+    private String instruction() {
+        String act = mouse ? "Click your mouse" : "Press W, A, S or D";
+        return switch (genre) {
+            case NORMAL -> act + " like you normally do - press and let go";
+            case SOFT -> act + " lightly, like when spam-clicking - press and let go";
+            case HARD -> act + " firmly, like the first click after a pause";
+        };
     }
 
     private int needed() {
@@ -193,20 +211,20 @@ public class RecordScreen extends Screen {
 
     private void finish() {
         stopMic();
-        String what = mouse ? "mouse" : "keyboard";
-        TakesScreen review = parent instanceof TakesScreen ts ? ts : new TakesScreen(parent, mouse);
+        String what = genre.title.toLowerCase(java.util.Locale.ROOT);
+        PackScreen review = parent instanceof PackScreen ps && ps.genre() == genre ? ps : new PackScreen(parent, mouse, genre);
         try {
             if (slot < 0) {
-                bank.replaceAll(takes);
-                review.setStatus("Saved 10 " + what + " takes! Click a wave to hear it.", GREEN);
+                bank.replaceAll(genre, takes);
+                review.setStatus("Saved 10 " + what + " to '" + bank.pack() + "'! Click a wave to hear it.", GREEN);
             } else {
-                bank.replaceTake(slot, takes.get(0));
-                int idx = Math.min(slot, bank.size() - 1);
+                bank.replaceTake(genre, slot, takes.get(0));
+                int idx = Math.min(slot, bank.size(genre) - 1);
                 review.setStatus("Saved " + what + " take " + (idx + 1), GREEN);
                 // let them hear the new take right away (the mic is already off)
-                bank.preview(idx, Math.max(0.3f, mouse ? ClickConfig.mouseVolume : ClickConfig.keyboardVolume), 150);
+                bank.preview(genre, idx, Math.max(0.3f, mouse ? ClickConfig.mouseVolume : ClickConfig.keyboardVolume), 150);
             }
-            report("Saved " + what + " takes", GREEN);
+            report("Saved " + what, GREEN);
         } catch (Exception e) {
             ClickSoundsClient.LOG.error("Saving sounds failed", e);
             review.setStatus("Couldn't save: " + e.getMessage(), RED);
@@ -252,9 +270,7 @@ public class RecordScreen extends Screen {
             return;
         }
 
-        ctx.drawCenteredTextWithShadow(this.textRenderer,
-            mouse ? "Click your mouse like you normally do - press and let go"
-                  : "Press W, A, S or D like you play - press and let go", cx, y, WHITE);
+        ctx.drawCenteredTextWithShadow(this.textRenderer, instruction(), cx, y, WHITE);
         ctx.drawCenteredTextWithShadow(this.textRenderer, needed() == 1 ? "One take"
             : "Take " + Math.min(takes.size() + 1, needed()) + " of " + needed(), cx, y + 14, YELLOW);
 

@@ -4,6 +4,9 @@ import dev.clicksounds.ClickConfig;
 import dev.clicksounds.ClickSoundsClient;
 import dev.clicksounds.audio.AudioEngine;
 import dev.clicksounds.audio.Devices;
+import dev.clicksounds.audio.Genre;
+import dev.clicksounds.audio.Packs;
+import dev.clicksounds.audio.SampleBank;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.tooltip.Tooltip;
@@ -40,26 +43,18 @@ public class ClickSoundsScreen extends Screen {
         int left = this.width / 2 - 155, right = this.width / 2 + 5, w = 150, gap = 24;
         int y = top = Math.max(38, this.height / 2 - 92);
 
-        addDrawableChild(ButtonWidget.builder(Text.literal("Record 10 mouse clicks"),
-            b -> client.setScreen(new RecordScreen(this, true, -1, this::setStatus)))
-            .dimensions(left, y, w, 20).tooltip(Tooltip.of(Text.literal(
-                "Records press + release of 10 clicks. Replaces your current mouse sounds when done.")))
-            .build());
-        addDrawableChild(ButtonWidget.builder(Text.literal("Record 10 key presses"),
-            b -> client.setScreen(new RecordScreen(this, false, -1, this::setStatus)))
-            .dimensions(right, y, w, 20).tooltip(Tooltip.of(Text.literal(
-                "Press W, A, S, D 10 times. These are used for every key on the keyboard.")))
-            .build());
+        addDrawableChild(packButton(left, y, w, true));
+        addDrawableChild(packButton(right, y, w, false));
         y += gap;
 
         addDrawableChild(previewButton(left, y, true));
-        addDrawableChild(ButtonWidget.builder(Text.literal("Mouse takes + waves..."),
-            b -> client.setScreen(new TakesScreen(this, true))).dimensions(left + 24, y, w - 24, 20)
-            .tooltip(Tooltip.of(Text.literal("See the sound wave of each take, play them, redo bad ones."))).build());
+        addDrawableChild(ButtonWidget.builder(Text.literal("Mouse clickpack..."),
+            b -> client.setScreen(new PackScreen(this, true, Genre.NORMAL))).dimensions(left + 24, y, w - 24, 20)
+            .tooltip(Tooltip.of(Text.literal("Record clicks / soft clicks / hard clicks, see their sound waves, redo bad ones."))).build());
         addDrawableChild(previewButton(right, y, false));
-        addDrawableChild(ButtonWidget.builder(Text.literal("Key takes + waves..."),
-            b -> client.setScreen(new TakesScreen(this, false))).dimensions(right + 24, y, w - 24, 20)
-            .tooltip(Tooltip.of(Text.literal("See the sound wave of each take, play them, redo bad ones."))).build());
+        addDrawableChild(ButtonWidget.builder(Text.literal("Keyboard clickpack..."),
+            b -> client.setScreen(new PackScreen(this, false, Genre.NORMAL))).dimensions(right + 24, y, w - 24, 20)
+            .tooltip(Tooltip.of(Text.literal("Record key presses (soft / hard too), see their sound waves, redo bad ones."))).build());
         y += gap;
 
         addDrawableChild(toggle(left, y, w, "Mouse sounds", () -> ClickConfig.mouseEnabled, v -> ClickConfig.mouseEnabled = v, null));
@@ -72,10 +67,12 @@ public class ClickSoundsScreen extends Screen {
             v -> ClickConfig.keyboardVolume = v, () -> ClickSoundsClient.KEYBOARD.previewRandom(ClickConfig.keyboardVolume, ClickConfig.variation, ClickConfig.releaseSounds)));
         y += gap;
 
-        addDrawableChild(toggle(left, y, w, "Release sounds", () -> ClickConfig.releaseSounds, v -> ClickConfig.releaseSounds = v,
-            "Also play the 'let go' sound when you release a button or key, like a real click."));
-        addDrawableChild(toggle(right, y, w, "Extra variation", () -> ClickConfig.variation, v -> ClickConfig.variation = v,
-            "Tiny random pitch and volume change on every play, so it never sounds like a loop."));
+        addDrawableChild(ButtonWidget.builder(Text.literal("Sound options..."), b -> client.setScreen(new SoundOptionsScreen(this)))
+            .dimensions(left, y, w, 20).tooltip(Tooltip.of(Text.literal(
+                "Release sounds, variation, and when soft / hard clicks are used."))).build());
+        addDrawableChild(ButtonWidget.builder(Text.literal("Open packs folder"), b -> openFolder())
+            .dimensions(right, y, w, 20).tooltip(Tooltip.of(Text.literal(
+                "Drop clickpacks here (one folder each, with clicks/, releases/, softclicks/, hardclicks/ ...)."))).build());
         y += gap;
 
         addDrawableChild(deviceButton(left, y, w, "Mic", Devices.microphones(), () -> ClickConfig.micDevice,
@@ -85,28 +82,46 @@ public class ClickSoundsScreen extends Screen {
             "Where the click sounds play. Pick a virtual audio cable to send them only to OBS / Discord."));
         y += gap;
 
-        addDrawableChild(ButtonWidget.builder(Text.literal("Open sounds folder"), b -> openFolder())
-            .dimensions(left, y, w, 20).tooltip(Tooltip.of(Text.literal(
-                "No mic? Drop your own .wav files in the mouse / keyboard folders and restart."))).build());
+        addDrawableChild(ButtonWidget.builder(Text.literal("Reload packs"), b -> {
+            ClickSoundsClient.loadPacks();
+            setStatus("Reloaded: mouse " + ClickSoundsClient.MOUSE.summary() + ", keyboard " + ClickSoundsClient.KEYBOARD.summary(), GREEN);
+            clearAndInit();
+        }).dimensions(left, y, w, 20).tooltip(Tooltip.of(Text.literal("Re-read the packs folder after adding or changing files."))).build());
         addDrawableChild(ButtonWidget.builder(Text.literal("Done"), b -> close()).dimensions(right, y, w, 20).build());
     }
 
-    /** Plays a random take exactly like a real click would (random take + variation + release). */
+    /** Cycles the device's clickpack through every pack folder. */
+    private ButtonWidget packButton(int x, int y, int w, boolean mouse) {
+        SampleBank bank = mouse ? ClickSoundsClient.MOUSE : ClickSoundsClient.KEYBOARD;
+        return ButtonWidget.builder(Text.literal((mouse ? "Mouse" : "Keys") + " pack: " + bank.pack()), b -> {
+            List<String> packs = Packs.list();
+            if (packs.isEmpty()) return;
+            String next = packs.get((packs.indexOf(bank.pack()) + 1) % packs.size());
+            if (mouse) ClickConfig.mousePack = next; else ClickConfig.keyboardPack = next;
+            bank.load(next);
+            ClickConfig.save();
+            setStatus((mouse ? "Mouse" : "Keyboard") + " now uses '" + next + "' (" + bank.summary() + ")", GREEN);
+            clearAndInit();
+        }).dimensions(x, y, w, 20).tooltip(Tooltip.of(Text.literal("Click to switch clickpack.\n'" + bank.pack()
+            + "': " + bank.summary()))).build();
+    }
+
+    /** Plays a random click exactly like a real one would (random take + variation + release). */
     private static ButtonWidget previewButton(int x, int y, boolean mouse) {
-        dev.clicksounds.audio.SampleBank bank = mouse ? ClickSoundsClient.MOUSE : ClickSoundsClient.KEYBOARD;
+        SampleBank bank = mouse ? ClickSoundsClient.MOUSE : ClickSoundsClient.KEYBOARD;
         ButtonWidget b = ButtonWidget.builder(Text.literal("\u25B6"), btn -> {
             float vol = Math.max(0.3f, mouse ? ClickConfig.mouseVolume : ClickConfig.keyboardVolume);
             bank.previewRandom(vol, ClickConfig.variation, ClickConfig.releaseSounds);
         }).dimensions(x, y, 20, 20).tooltip(Tooltip.of(Text.literal(
             "Preview: plays a random " + (mouse ? "click" : "key press") + " the way it sounds in game"))).build();
-        b.active = bank.size() > 0;
+        b.active = !bank.isEmpty();
         return b;
     }
 
     interface BoolGetter { boolean get(); }
     interface BoolSetter { void set(boolean v); }
 
-    private static ButtonWidget toggle(int x, int y, int w, String label, BoolGetter get, BoolSetter set, String tip) {
+    static ButtonWidget toggle(int x, int y, int w, String label, BoolGetter get, BoolSetter set, String tip) {
         ButtonWidget.Builder b = ButtonWidget.builder(onOff(label, get.get()), btn -> {
             set.set(!get.get());
             btn.setMessage(onOff(label, get.get()));
@@ -141,9 +156,8 @@ public class ClickSoundsScreen extends Screen {
 
     private void openFolder() {
         try {
-            Files.createDirectories(ClickSoundsClient.MOUSE.dir());
-            Files.createDirectories(ClickSoundsClient.KEYBOARD.dir());
-            Util.getOperatingSystem().open(ClickSoundsClient.MOUSE.dir().getParent().toFile());
+            Files.createDirectories(Packs.packsDir());
+            Util.getOperatingSystem().open(Packs.packsDir().toFile());
         } catch (Exception e) {
             setStatus("Couldn't open folder: " + e.getMessage(), RED);
         }
@@ -154,18 +168,12 @@ public class ClickSoundsScreen extends Screen {
         super.render(ctx, mouseX, mouseY, delta);
         int cx = this.width / 2;
         ctx.drawCenteredTextWithShadow(this.textRenderer, this.title, cx, Math.max(4, top - 30), WHITE);
-        ctx.drawCenteredTextWithShadow(this.textRenderer, summary(ClickSoundsClient.MOUSE, "mouse"), cx - 80, top - 12, GRAY);
-        ctx.drawCenteredTextWithShadow(this.textRenderer, summary(ClickSoundsClient.KEYBOARD, "key"), cx + 80, top - 12, GRAY);
+        ctx.drawCenteredTextWithShadow(this.textRenderer, ClickSoundsClient.MOUSE.summary(), cx - 80, top - 12, GRAY);
+        ctx.drawCenteredTextWithShadow(this.textRenderer, ClickSoundsClient.KEYBOARD.summary(), cx + 80, top - 12, GRAY);
         int bottom = top + 7 * 24;
         ctx.drawCenteredTextWithShadow(this.textRenderer, status, cx, Math.min(this.height - 22, bottom + 2), statusColor);
         ctx.drawCenteredTextWithShadow(this.textRenderer,
             "Key sounds play for every key, mouse sounds for every button.", cx, Math.min(this.height - 11, bottom + 14), DARK_GRAY);
-    }
-
-    static String summary(dev.clicksounds.audio.SampleBank bank, String what) {
-        int n = bank.size();
-        if (n == 0) return "No " + what + " sounds yet";
-        return n + " " + what + " take" + (n == 1 ? "" : "s") + (bank.hasReleases() ? " (press + release)" : "");
     }
 
     @Override

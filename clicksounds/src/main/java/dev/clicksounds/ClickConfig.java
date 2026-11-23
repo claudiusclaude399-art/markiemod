@@ -22,6 +22,16 @@ public final class ClickConfig {
     /** Device names; empty = system default. */
     public static String micDevice = "";
     public static String outputDevice = "";
+    /** Active clickpack (folder name in config/clicksounds/packs) per device. */
+    public static String mousePack = "My clicks";
+    public static String keyboardPack = "My clicks";
+    /** Optional genres: soft clicks when clicking fast, hard clicks after a pause. */
+    public static boolean softClicks = true;
+    public static boolean hardClicks = true;
+    /** Presses closer together than this (ms) use soft clicks. */
+    public static int softMs = 120;
+    /** Presses after a pause longer than this (ms) use hard clicks. */
+    public static int hardMs = 800;
 
     private ClickConfig() {}
 
@@ -43,6 +53,12 @@ public final class ClickConfig {
             releaseSounds = Boolean.parseBoolean(p.getProperty("releaseSounds", "true"));
             micDevice = p.getProperty("micDevice", "");
             outputDevice = p.getProperty("outputDevice", "");
+            mousePack = p.getProperty("mousePack", "My clicks");
+            keyboardPack = p.getProperty("keyboardPack", "My clicks");
+            softClicks = Boolean.parseBoolean(p.getProperty("softClicks", "true"));
+            hardClicks = Boolean.parseBoolean(p.getProperty("hardClicks", "true"));
+            softMs = clampInt(p.getProperty("softMs", "120"), 20, 500, 120);
+            hardMs = clampInt(p.getProperty("hardMs", "800"), 200, 5000, 800);
         } catch (Exception e) {
             ClickSoundsClient.LOG.warn("Could not read {}, using defaults", f, e);
         }
@@ -58,6 +74,12 @@ public final class ClickConfig {
         p.setProperty("releaseSounds", Boolean.toString(releaseSounds));
         p.setProperty("micDevice", micDevice);
         p.setProperty("outputDevice", outputDevice);
+        p.setProperty("mousePack", mousePack);
+        p.setProperty("keyboardPack", keyboardPack);
+        p.setProperty("softClicks", Boolean.toString(softClicks));
+        p.setProperty("hardClicks", Boolean.toString(hardClicks));
+        p.setProperty("softMs", Integer.toString(softMs));
+        p.setProperty("hardMs", Integer.toString(hardMs));
         try {
             Files.createDirectories(file().getParent());
             try (Writer w = Files.newBufferedWriter(file())) {
@@ -66,6 +88,10 @@ public final class ClickConfig {
         } catch (Exception e) {
             ClickSoundsClient.LOG.warn("Could not save {}", file(), e);
         }
+    }
+
+    private static int clampInt(String s, int min, int max, int def) {
+        try { return Math.max(min, Math.min(max, Integer.parseInt(s.trim()))); } catch (Exception e) { return def; }
     }
 
     private static float clamp(float v) {

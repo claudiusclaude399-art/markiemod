@@ -1,9 +1,12 @@
 # Click Sounds (Fabric, Minecraft 1.21.11)
 
-For people who record or stream without a mic. You record your real mouse and keyboard
-**once**, and from then on the mod plays one of those recordings every time you click or press
-a key, so viewers still hear you clicking.
+For people who record or stream without a mic. You record your real mouse and keyboard **once**
+(or use a downloaded clickpack), and from then on the mod plays one of those sounds every time you
+click or press a key, so viewers still hear you clicking.
 
+- **Clickpacks:** sounds are organised in packs with their own folders for clicks, releases,
+  soft clicks and hard clicks. Downloaded packs (.wav/.ogg, including Geometry Dash clickbot packs)
+  can be dropped straight in.
 - **Mouse:** record 10 clicks. Every mouse button press plays a random one of the 10.
 - **Keyboard:** record 10 key presses (W, A, S, D). **Every** key on the keyboard plays a random one
   of those 10.
@@ -19,51 +22,83 @@ Client-side only. Requires Fabric Loader and Fabric API.
 
 1. Open the menu: press **K** in a world (rebindable under Controls > Click Sounds), type
    `/clicksounds`, or use the Configure button in **Mod Menu** (works from the title screen).
-2. Click **Record 10 mouse clicks** and click your mouse 10 times, one click at a time (press and
-   let go normally). Each box turns green when that click has been captured.
-3. Click **Record 10 key presses** and press W, A, S, D 10 times in total.
-4. When it's done you land on the takes screen: every take is shown as a **sound wave** (press in
-   blue, release in orange). Click a wave to hear it, with a playhead running across it, hit
-   **Play all** to hear them back to back, and **Redo** any bad one on its own.
+2. Open **Mouse clickpack...**, stay on the **Clicks** tab and hit **Record 10**. Click your mouse 10
+   times, one click at a time (press and let go normally).
+3. Do the same in **Keyboard clickpack...** pressing W, A, S, D.
+4. Optional: record the **Soft clicks** and **Hard clicks** tabs too (see below).
 
-While recording you see a **live sound wave** from your mic. Each press and release is marked on it,
-every click it captured is highlighted green, and each finished take appears as a mini wave in the
-progress row. If a click isn't heard, try again closer to the mic.
+When a recording is done you land on its tab: every take is shown as a **sound wave** (click in
+blue, release in orange). Click a wave to hear it (a playhead runs across it), **Play all** plays
+them back to back, and **Redo** re-records just that one.
 
-**Previews:**
-- the ▶ button next to "takes + waves" plays a random take exactly as it sounds in game (random
-  pick, variation, release after a natural gap)
-- dragging a volume slider plays previews too
-- after redoing one take, it plays straight away
+While recording you see a **live sound wave** from your mic. Each press and release is marked, every
+click it captured is highlighted green, and each finished take appears as a mini wave. Esc cancels
+and keeps your old sounds. You only need a microphone for those few seconds of recording.
 
-Esc during recording cancels it, and your old sounds are kept. You only need a microphone for those
-few seconds of recording. Afterwards the mod never touches the mic.
+**Previews:** the ▶ button next to "clickpack..." plays a random click exactly as it sounds in game.
+Dragging a volume slider plays previews too, and a redone take plays straight away.
+
+## Clickpacks
+
+Every set of sounds is a **clickpack**: a folder in `config/clicksounds/packs/`. Your recordings go
+in the pack called `My clicks`. The mouse and the keyboard each pick their own pack (the
+**Mouse pack / Keys pack** buttons cycle through every pack folder), so you can e.g. use a downloaded
+pack for the mouse and your own recording for the keyboard.
+
+```
+packs/<Pack name>/
+  mouse/
+    clicks/         normal clicks            (needed)
+    releases/       normal releases
+    softclicks/     soft clicks              (optional)
+    softreleases/   soft releases            (optional)
+    hardclicks/     hard clicks              (optional)
+    hardreleases/   hard releases            (optional)
+  keyboard/
+    clicks/  releases/  softclicks/  softreleases/  hardclicks/  hardreleases/
+```
+
+- A release goes with the click of the **same file name** (`clicks/03.wav` and `releases/03.wav`).
+  Clicks without a matching release get a random release from that genre's folder (or from
+  `releases/` if the genre has none).
+- **.wav** and **.ogg** files are both fine, with any name, sample rate, mono or stereo.
+- Packs made for Geometry Dash clickbots (the genre folders directly in the pack folder, or in
+  `player1/`) work as **mouse** packs as they are. Just drop the folder into `packs/` and hit
+  **Reload packs**.
+- **New pack** (in a clickpack screen) makes an empty pack to record into; rename its folder any time.
+
+### Soft and hard clicks (optional)
+
+How fast you click decides which genre plays:
+
+| Time since your previous click | Plays |
+| --- | --- |
+| shorter than 120 ms (spam clicking) | **soft clicks** |
+| in between | normal **clicks** |
+| longer than 800 ms (first click after a pause) | **hard clicks** |
+
+Both thresholds can be changed, and soft and hard clicks can each be switched off, in
+**Sound options...**. A pack without soft or hard clicks just uses its normal clicks. When recording
+them, click lightly for soft clicks and firmly for hard clicks.
 
 ## Settings
 
 | Setting | What it does |
 | --- | --- |
+| Mouse pack / Keys pack | Which clickpack each device uses. |
 | Mouse / Keyboard sounds | On/off per type. There's also an unbound **Toggle click sounds** hotkey in Controls. |
-| Mouse / Keyboard volume | 0-200%. |
-| Release sounds | Play the "let go" sound too. |
-| Extra variation | Tiny random pitch/volume change on every play. |
+| Mouse / Keyboard volume | 0-200%. One loudness level per pack, so soft clicks stay softer than hard ones. |
+| Sound options: Release sounds | Play the release sound when you let go. |
+| Sound options: Extra variation | Tiny random pitch/volume change on every play. |
+| Sound options: Soft / Hard clicks | On/off, and their timing. |
 | Mic | Which microphone records (click to cycle through devices). |
 | Output | Where the sounds play. Default is your normal speakers/headphones, which OBS / Discord desktop audio already captures. Pick a virtual audio cable to send the clicks *only* to your stream/recording. |
 
 The sounds are played by the mod itself, not by Minecraft's sound engine, so Minecraft's volume
 sliders don't affect them.
 
-## No mic at all?
-
-Put your own `.wav` files in `config/clicksounds/mouse/` and `config/clicksounds/keyboard/`
-(the **Open sounds folder** button opens it) and restart. Any number of files works. A random one
-is picked each time. To add a release sound for `foo.wav`, name it `foo_up.wav`.
-
-## Files
-
-- `config/clicksounds/mouse/*.wav`, `config/clicksounds/keyboard/*.wav`: the recordings
-  (`*_up.wav` = release sound)
-- `config/clicksounds.properties`: all settings
+Recordings from older versions (`config/clicksounds/mouse/`, `keyboard/`) are moved into the
+`My clicks` pack automatically on first start. Settings are in `config/clicksounds.properties`.
 
 ## Notes
 
